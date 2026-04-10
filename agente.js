@@ -268,13 +268,27 @@ async function procesarMensaje(texto, esAdmin = true) {
   const vigMatch = tl.match(/\b(2023|2024|2025|2026)\b/);
   const vigencia = vigMatch ? parseInt(vigMatch[1]) : null;
 
+  // ── RANKING DESCUENTOS ──
+  const esMas   = tl.includes('más descuento') || tl.includes('mas descuento') || tl.includes('mayor descuento') || tl.includes('más descontado') || tl.includes('mas descontado');
+  const esMenos = tl.includes('menos descuento') || tl.includes('menor descuento') || tl.includes('menos descontado');
+
+  if (esMas || esMenos) {
+    // Detectar trimestre
+    let trimestre = null;
+    if (tl.includes('i trim') || tl.includes('primer trim') || tl.includes('trimestre 1') || tl.includes('1 trim')) trimestre = 'I Trim';
+    if (tl.includes('ii trim') || tl.includes('segundo trim') || tl.includes('trimestre 2') || tl.includes('2 trim')) trimestre = 'II Trim';
+    if (tl.includes('iii trim') || tl.includes('tercer trim') || tl.includes('trimestre 3') || tl.includes('3 trim')) trimestre = 'III Trim';
+    if (tl.includes('iv trim') || tl.includes('cuarto trim') || tl.includes('trimestre 4') || tl.includes('4 trim')) trimestre = 'IV Trim';
+    return { tipo: 'ranking_descuentos', orden: esMas ? 'mayor' : 'menor', vigencia, trimestre };
+  }
+
   // Reporte de una vigencia específica
   if (vigencia && (tl.includes('eval') || tl.includes('reporte') || tl.includes('descuento') || tl.includes('prestador') || tl.includes('contrato'))) {
     return { tipo: 'evaluacion', vigencia, excel: tl.includes('excel') || tl.includes('archivo') };
   }
 
   // Comparativo de todas las vigencias
-  if ((tl.includes('eval') || tl.includes('comparar') || tl.includes('todas') || tl.includes('vigencias')) &&
+  if ((tl.includes('comparar') || tl.includes('todas') || tl.includes('vigencias')) &&
       (tl.includes('eval') || tl.includes('reporte'))) {
     return { tipo: 'evaluacion_comparativo' };
   }

@@ -289,4 +289,96 @@ async function reporteComparativo(vigencias) {
   return msg;
 }
 
-module.exports = { generarReporte, generarExcel, obtenerDatos, reporteComparativo, SHEETS };
+// ──────────────────────────────────────────────
+// RANKING DESCUENTOS — MÁS / MENOS
+// ──────────────────────────────────────────────
+
+async function rankingDescuentos({ vigencia, orden = 'mayor', top = 10, trimestre = null }) {
+  // Si no hay vigencia, comparar todas
+  const vigs = vigencia ? [vigencia] : [2023, 2024, 2025];
+
+  const acumulado = {}; // prestador → { total, porVigencia, porTrimestre }
+
+  for (const v of vigs) {
+    if (!SHEETS[v]) continue;
+    const csv = await fetchCSV(SHEETS[v]);
+    const rows = parseCSV(csv);
+
+    // Detectar columnas de trimestres según la vigencia
+    let colsTrim = {};
+    if (v === 2023) {
+      colsTrim = { 'I Trim': [8, 9], 'II Trim': [10, 11], 'III Trim': [12, 13], 'IV Trim': [14, 15] };
+    } else if (v === 2024) {
+      colsTrim = { 'I Trim': [14, 15], 'II Trim': [16, 17], 'III Trim': [18, 19], 'IV Trim': [20, 21] };
+    } else if (v === 2025) {
+      colsTrim = { 'I Trim': [8, 9], 'II Trim': [10, 11], 'III Trim': [12, 13], 'IV Trim': [14, 15], 'V Bimestre': [16, 17] };
+    }
+
+    const startRow = v === 2023 ? 1 : 3;
+    const nombreCol = v === 2023 ? 2 : (v === 2024 ? 3 : 2);
+
+    for (let i = startRow; i < rows.length; i++) {
+      const r = rows[i];
+      const nombre = r[nombreCol]?.trim();
+      if (!nombre) continue;
+
+      if (!acumulado[nombre]) acumulado[nombre] = { total: 0, porVigencia: {}, porTrimestre: {} };
+
+      // Por trimestre
+      for (const [nomTrim, cols] of Object.entries(colsTrim)) {
+        const val = (parseMonto(r[cols[0]]) || 0) + (parseMonto(r[cols[1]]) || 0);
+        const key = `${v} - ${nomTrim}`;
+        acumulado[nombre].porTrimestre[key] = (acumulado[nombre].porTrimestre[key] || 0) + val;
+        acumulado[nombre].total += val;
+        acumulado[nombre].porVigencia[v] = (acumulado[nombre].porVigencia[v] || 0) + val;
+      }
+    }
+  }
+
+  // Si se pide un trimestre específico
+  let ranking;
+  if (trimestre) {
+    const tKey = trimestre.toString().toUpperCase();
+    ranking = Object.entries(acumulado).map(([nombre, d]) => {
+      const trimVal = Object.entries(d.porTrimestre)
+        .filter(([k]) => k.toUpperCase().includes(tKey))
+        .reduce((s, [, v]) => s + v, 0);
+      return { nombre, valor: trimVal };
+    }).filter(x => x.valor > 0);
+  } else {
+    ranking = Object.entries(acumulado)
+      .map(([nombre, d]) => {
+        const vigKey = vigencia ? vigencia : null;
+        const valor = vigKey ? (d.porVigencia[vigKey] || 0) : d.total;
+        return { nombre, valor, detalle: d.porVigencia };
+      })
+      .filter(x => x.valor > 0);
+  }
+
+  ranking.sort((a, b) => orden === 'mayor' ? b.valor - a.valor : a.valor - b.valor);
+  const resultado = ranking.slice(0, top);
+
+  const titulo = orden === 'mayor' ? 'MÁS DESCUENTOS' : 'MENOS DESCUENTOS';
+  const emoji = orden === 'mayor' ? '📈' : '📉';
+  const vigLabel = vigencia ? `VIGENCIA ${vigencia}` : 'TODAS LAS VIGENCIAS';
+  const trimLabel = trimestre ? ` — ${trimestre}` : '';
+
+  let msg = `${emoji} *PRESTADORES CON ${titulo}*\n`;
+  msg += `📅 ${vigLabel}${trimLabel}\n`;
+  msg += `─────────────────────────────\n`;
+
+  resultado.forEach(({ nombre, valor, detalle }, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+    msg += `${medal} *${nombre}*\n   💰 ${formatPesos(valor)}\n`;
+    // Si hay detalle por vigencia y es multi-año, mostrarlo
+    if (!vigencia && detalle) {
+      for (const [v, val] of Object.entries(detalle)) {
+        if (val > 0) msg += `   ${v}: ${formatPesos(val)}\n`;
+      }
+    }
+  });
+
+  return msg;
+}
+
+module.exports = { generarReporte, generarExcel, obtenerDatos, reporteComparativo, rankingDescuentos, SHEETS };

@@ -107,6 +107,18 @@ bot.on('message', async (msg) => {
   try {
     const respuesta = await agente.procesarMensaje(texto, esAdmin);
 
+    // ── RANKING DESCUENTOS ──
+    if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'ranking_descuentos') {
+      await bot.sendChatAction(chatId, 'typing');
+      const reporte = await evaluaciones.rankingDescuentos({
+        vigencia: respuesta.vigencia,
+        orden: respuesta.orden,
+        trimestre: respuesta.trimestre,
+      });
+      await enviarMensaje(chatId, reporte);
+      return;
+    }
+
     // ── EVALUACIONES ──
     if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'evaluacion') {
       await bot.sendChatAction(chatId, 'typing');
