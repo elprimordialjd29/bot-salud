@@ -8,7 +8,7 @@
  * Email: Gmail (nodemailer)
  */
 
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 const TelegramBot = require('node-telegram-bot-api');
 const agente = require('./agente');
@@ -21,13 +21,11 @@ const fs = require('fs');
 // ──────────────────────────────────────────────
 
 const errores = [];
-if (!process.env.ANTHROPIC_API_KEY) errores.push('ANTHROPIC_API_KEY');
-if (!process.env.SUPABASE_URL)     errores.push('SUPABASE_URL');
-if (!process.env.SUPABASE_KEY)     errores.push('SUPABASE_KEY');
-if (!process.env.VECTORPOS_USER)   errores.push('VECTORPOS_USER');
-if (!process.env.VECTORPOS_PASS)   errores.push('VECTORPOS_PASS');
-if (!process.env.TELEGRAM_TOKEN)   errores.push('TELEGRAM_TOKEN');
-if (!process.env.TELEGRAM_ADMIN_ID) errores.push('TELEGRAM_ADMIN_ID');
+if (!process.env.ANTHROPIC_API_KEY)  errores.push('ANTHROPIC_API_KEY');
+if (!process.env.SUPABASE_URL)       errores.push('SUPABASE_URL');
+if (!process.env.SUPABASE_KEY)       errores.push('SUPABASE_KEY');
+if (!process.env.TELEGRAM_TOKEN)     errores.push('TELEGRAM_TOKEN');
+if (!process.env.TELEGRAM_ADMIN_ID)  errores.push('TELEGRAM_ADMIN_ID');
 
 if (errores.length > 0) {
   console.error('❌ Faltan variables en .env:');
@@ -48,13 +46,12 @@ const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
 // ──────────────────────────────────────────────
 
 async function iniciar() {
-  console.log('\n🤖 Iniciando Chu...');
+  console.log('\n🤖 Iniciando Bot Salud...');
   console.log('───────────────────────────────────');
   console.log('📱 Interface: Telegram');
-  console.log('🧠 IA: Groq / Llama 3.3 70B');
+  console.log('🧠 IA: Claude (Anthropic)');
   console.log('🗄️  DB: Supabase');
-  console.log('💻 POS: VectorPOS');
-  console.log('📧 Email: ' + (process.env.EMAIL_USER || 'no configurado'));
+  console.log('📋 Conocimiento: Resolución 3280 + 3374');
   console.log(`👤 Admin ID: ${ADMIN_ID}`);
   console.log('───────────────────────────────────\n');
 
@@ -68,7 +65,7 @@ async function iniciar() {
     console.log('ℹ️  No se pudo enviar mensaje de bienvenida (normal en primer inicio)');
   }
 
-  console.log('✅ ¡Chu ACTIVO en Telegram!');
+  console.log('✅ ¡Bot Salud ACTIVO en Telegram!');
 }
 
 // ──────────────────────────────────────────────
