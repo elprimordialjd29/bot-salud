@@ -122,15 +122,26 @@ bot.on('message', async (msg) => {
     // ── EVALUACIONES ──
     if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'evaluacion') {
       await bot.sendChatAction(chatId, 'typing');
-      const reporte = await evaluaciones.generarReporte(respuesta.vigencia);
-      await enviarMensaje(chatId, reporte);
-      // Siempre enviar Excel
-      const excelPath = await evaluaciones.generarExcel(respuesta.vigencia);
-      await bot.sendDocument(chatId, excelPath, {}, {
-        filename: `Evaluaciones_${respuesta.vigencia}.xlsx`,
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      try { fs.unlinkSync(excelPath); } catch(e) {}
+      try {
+        const reporte = await evaluaciones.generarReporte(respuesta.vigencia);
+        await enviarMensaje(chatId, reporte);
+      } catch(e) {
+        console.error('❌ Error generarReporte:', e.message);
+        await bot.sendMessage(chatId, `❌ Error al generar reporte: ${e.message}`);
+        return;
+      }
+      // Excel por separado
+      try {
+        const excelPath = await evaluaciones.generarExcel(respuesta.vigencia);
+        await bot.sendDocument(chatId, excelPath, {}, {
+          filename: `Evaluaciones_${respuesta.vigencia}.xlsx`,
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        try { fs.unlinkSync(excelPath); } catch(e) {}
+      } catch(e) {
+        console.error('❌ Error Excel:', e.message);
+        await bot.sendMessage(chatId, `⚠️ Reporte enviado, pero hubo un error al generar el Excel: ${e.message}`);
+      }
       return;
     }
 
