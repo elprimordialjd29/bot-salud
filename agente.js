@@ -16,11 +16,11 @@ const historial = [];
 // SYSTEM PROMPT — SALUD
 // ──────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Eres un asistente experto en salud colombiana. Respondes en español colombiano, de forma clara, precisa y amable.
+const SYSTEM_PROMPT = `Eres un asistente de salud colombiana. Respondes en español colombiano, de forma corta, directa y sin rodeos.
 
-Tu especialidad es la normatividad de salud colombiana, especialmente:
-1. Resolución 3280 de 2018 — Rutas Integrales de Atención en Salud (RIAS)
-2. Resolución 3374 de 2000 — RIPS (Registro Individual de Prestación de Servicios de Salud)
+REGLA PRINCIPAL: Si no tienes el dato exacto, di simplemente "No tengo ese dato disponible" — sin explicaciones largas, sin alternativas, sin listas.
+
+Solo responde preguntas sobre normatividad (Resolución 3280 y 3374) cuando el usuario lo pida explícitamente. Para todo lo demás, responde breve.
 
 ━━━ RESOLUCIÓN 3280 DE 2018 — RIAS ━━━
 
@@ -268,28 +268,35 @@ async function procesarMensaje(texto, esAdmin = true) {
   const vigMatch = tl.match(/\b(2023|2024|2025|2026)\b/);
   const vigencia = vigMatch ? parseInt(vigMatch[1]) : null;
 
-  // ── RANKING DESCUENTOS ──
-  const esMas   = tl.includes('más descuento') || tl.includes('mas descuento') || tl.includes('mayor descuento') || tl.includes('más descontado') || tl.includes('mas descontado');
-  const esMenos = tl.includes('menos descuento') || tl.includes('menor descuento') || tl.includes('menos descontado');
-
-  if (esMas || esMenos) {
-    // Detectar trimestre
-    let trimestre = null;
-    if (tl.includes('i trim') || tl.includes('primer trim') || tl.includes('trimestre 1') || tl.includes('1 trim')) trimestre = 'I Trim';
-    if (tl.includes('ii trim') || tl.includes('segundo trim') || tl.includes('trimestre 2') || tl.includes('2 trim')) trimestre = 'II Trim';
-    if (tl.includes('iii trim') || tl.includes('tercer trim') || tl.includes('trimestre 3') || tl.includes('3 trim')) trimestre = 'III Trim';
-    if (tl.includes('iv trim') || tl.includes('cuarto trim') || tl.includes('trimestre 4') || tl.includes('4 trim')) trimestre = 'IV Trim';
-    return { tipo: 'ranking_descuentos', orden: esMas ? 'mayor' : 'menor', vigencia, trimestre };
+  // Detectar trimestre
+  function detectarTrimestre(s) {
+    if (s.includes('i trim') || s.includes('primer trim') || s.includes('trimestre 1') || s.includes('1 trim') || s.includes('1er trim')) return 'I Trim';
+    if (s.includes('ii trim') || s.includes('segundo trim') || s.includes('trimestre 2') || s.includes('2 trim')) return 'II Trim';
+    if (s.includes('iii trim') || s.includes('tercer trim') || s.includes('trimestre 3') || s.includes('3 trim')) return 'III Trim';
+    if (s.includes('iv trim') || s.includes('cuarto trim') || s.includes('trimestre 4') || s.includes('4 trim')) return 'IV Trim';
+    return null;
   }
 
-  // Reporte de una vigencia específica
-  if (vigencia && (tl.includes('eval') || tl.includes('reporte') || tl.includes('descuento') || tl.includes('prestador') || tl.includes('contrato'))) {
+  // ── RANKING DESCUENTOS ──
+  const esMas   = /m[aá]s descuento|mayor descuento|m[aá]s descontado|top descuento/.test(tl);
+  const esMenos = /menos descuento|menor descuento|menos descontado/.test(tl);
+
+  if (esMas || esMenos) {
+    return { tipo: 'ranking_descuentos', orden: esMas ? 'mayor' : 'menor', vigencia, trimestre: detectarTrimestre(tl) };
+  }
+
+  // ── REPORTE EVALUACIONES (palabras clave amplias) ──
+  const palabrasEval = ['evaluacion', 'evaluación', 'eval ', 'evaluado', 'pendiente evaluar', 'sin evaluar', 'al dia', 'al día', 'contrato', 'prestador'];
+  const palabrasReporte = ['reporte', 'dame', 'muestra', 'ver', 'consultar', 'informe', 'resumen'];
+  const tieneEval = palabrasEval.some(p => tl.includes(p));
+  const tieneReporte = palabrasReporte.some(p => tl.includes(p));
+
+  if (vigencia && (tieneEval || tieneReporte || tl.includes('descuento'))) {
     return { tipo: 'evaluacion', vigencia, excel: tl.includes('excel') || tl.includes('archivo') };
   }
 
-  // Comparativo de todas las vigencias
-  if ((tl.includes('comparar') || tl.includes('todas') || tl.includes('vigencias')) &&
-      (tl.includes('eval') || tl.includes('reporte'))) {
+  // ── COMPARATIVO TODAS LAS VIGENCIAS ──
+  if ((tl.includes('comparar') || tl.includes('todas') || tl.includes('vigencias') || tl.includes('todos los años')) && tieneEval) {
     return { tipo: 'evaluacion_comparativo' };
   }
 
