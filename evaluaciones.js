@@ -186,12 +186,17 @@ async function generarReporte(vigencia) {
     .sort((a, b) => b[1].descuentos - a[1].descuentos)
     .slice(0, 5);
 
+  const total = datos.length;
+  const pEval = total > 0 ? ((evaluados.length / total) * 100).toFixed(1) : 0;
+  const pParc = total > 0 ? ((parciales.length / total) * 100).toFixed(1) : 0;
+  const pPend = total > 0 ? ((pendientes.length / total) * 100).toFixed(1) : 0;
+
   let msg = `📊 *REPORTE EVALUACIONES — VIGENCIA ${vigencia}*\n`;
   msg += `─────────────────────────────\n`;
-  msg += `📋 Total contratos: *${datos.length}*\n`;
-  msg += `✅ Evaluados: *${evaluados.length}*\n`;
-  msg += `⚠️ Parcialmente evaluados: *${parciales.length}*\n`;
-  msg += `❌ Pendientes: *${pendientes.length}*\n\n`;
+  msg += `📋 Total contratos: *${total}*\n`;
+  msg += `✅ Evaluados: *${evaluados.length}* (${pEval}%)\n`;
+  msg += `⚠️ Parcialmente evaluados: *${parciales.length}* (${pParc}%)\n`;
+  msg += `❌ Pendientes: *${pendientes.length}* (${pPend}%)\n\n`;
 
   if (topDescuentos.length > 0) {
     msg += `💰 *TOP DESCUENTOS POR PRESTADOR:*\n`;
@@ -279,11 +284,14 @@ async function reporteComparativo(vigencias) {
 
   let msg = `📊 *COMPARATIVO EVALUACIONES*\n─────────────────────────────\n`;
   for (const r of resultados) {
+    const pE = r.total > 0 ? ((r.evaluados / r.total) * 100).toFixed(1) : 0;
+    const pP = r.total > 0 ? ((r.parciales / r.total) * 100).toFixed(1) : 0;
+    const pN = r.total > 0 ? ((r.pendientes / r.total) * 100).toFixed(1) : 0;
     msg += `\n📅 *Vigencia ${r.vigencia}*\n`;
     msg += `  • Total contratos: ${r.total}\n`;
-    msg += `  • ✅ Evaluados: ${r.evaluados}\n`;
-    msg += `  • ⚠️ Parciales: ${r.parciales}\n`;
-    msg += `  • ❌ Pendientes: ${r.pendientes}\n`;
+    msg += `  • ✅ Evaluados: ${r.evaluados} (${pE}%)\n`;
+    msg += `  • ⚠️ Parciales: ${r.parciales} (${pP}%)\n`;
+    msg += `  • ❌ Pendientes: ${r.pendientes} (${pN}%)\n`;
     if (r.totalDesc > 0) msg += `  • 💰 Total descuentos: ${formatPesos(r.totalDesc)}\n`;
   }
   return msg;
