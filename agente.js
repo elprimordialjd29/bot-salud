@@ -25,14 +25,7 @@ No respondas preguntas de normatividad ni resoluciones de salud. Solo te ocupas 
 // ──────────────────────────────────────────────
 
 function mensajeBienvenida() {
-  return `👋 *¡Hola! Soy tu asistente de evaluaciones y contratos.*
-
-Puedes preguntarme:
-• "Dame el reporte de evaluaciones 2025"
-• "¿Quién tiene más descuento en 2025?"
-• "¿Quién está pendiente de evaluar en 2024?"
-• "Reporte comparativo de todas las vigencias"
-• "Dame el Excel de evaluaciones 2025"
+  return `👋 *¡Hola! Soy tu asistente en salud. ¿En qué te puedo ayudar?*
 
 Escríbeme tu pregunta 💬`;
 }
