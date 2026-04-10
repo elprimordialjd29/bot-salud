@@ -14,6 +14,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const agente = require('./agente');
 const reportes = require('./reportes');
 const db = require('./database');
+const evaluaciones = require('./evaluaciones');
 const fs = require('fs');
 
 // ──────────────────────────────────────────────
@@ -106,6 +107,29 @@ bot.on('message', async (msg) => {
   try {
     const respuesta = await agente.procesarMensaje(texto, esAdmin);
 
+    // ── EVALUACIONES ──
+    if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'evaluacion') {
+      await bot.sendChatAction(chatId, 'typing');
+      const reporte = await evaluaciones.generarReporte(respuesta.vigencia);
+      await enviarMensaje(chatId, reporte);
+      // Siempre enviar Excel
+      const excelPath = await evaluaciones.generarExcel(respuesta.vigencia);
+      await bot.sendDocument(chatId, excelPath, {}, {
+        filename: `Evaluaciones_${respuesta.vigencia}.xlsx`,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      try { fs.unlinkSync(excelPath); } catch(e) {}
+      return;
+    }
+
+    if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'evaluacion_comparativo') {
+      await bot.sendChatAction(chatId, 'typing');
+      const reporte = await evaluaciones.reporteComparativo([2023, 2024, 2025]);
+      await enviarMensaje(chatId, reporte);
+      return;
+    }
+
+    // ── OTROS TIPOS ──
     if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'archivo') {
       await bot.sendDocument(chatId, respuesta.path, {}, {
         filename: respuesta.nombre,

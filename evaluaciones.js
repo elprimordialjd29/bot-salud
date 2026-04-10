@@ -1,0 +1,292 @@
+/**
+ * evaluaciones.js — Módulo de evaluaciones de contratos capitados
+ * Lee las matrices de evaluación desde Google Sheets públicos
+ * Genera reportes y archivos Excel
+ */
+
+require('dotenv').config({ override: true });
+const axios = require('axios');
+const XLSX = require('xlsx');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// ──────────────────────────────────────────────
+// SHEETS IDS
+// ──────────────────────────────────────────────
+
+const SHEETS = {
+  2023: '1jhuLSb_Khy1WDHYBrbydFVuWzIWv2TYi746M9u5Q8cc',
+  2024: '14_4t6KyKtB2EIMjt0hS8Dg9S8ySo4Y9hrXM_7v-VyVE',
+  2025: '141ppT10L-3TFY-jUlYeK_X9X0xESrmBkCeffJUu8jAg',
+};
+
+// ──────────────────────────────────────────────
+// HELPERS
+// ──────────────────────────────────────────────
+
+function parseMonto(val) {
+  if (!val || typeof val !== 'string') return 0;
+  const n = parseFloat(val.replace(/[\$,\s]/g, '').replace(/\./g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+
+function formatPesos(n) {
+  if (!n || n === 0) return '$0';
+  return '$' + Math.round(n).toLocaleString('es-CO');
+}
+
+async function fetchCSV(sheetId) {
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+  const resp = await axios.get(url, { responseType: 'text' });
+  return resp.data;
+}
+
+function parseCSV(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  const rows = lines.map(line => {
+    const cells = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '"') { inQuotes = !inQuotes; }
+      else if (line[i] === ',' && !inQuotes) { cells.push(current.trim()); current = ''; }
+      else { current += line[i]; }
+    }
+    cells.push(current.trim());
+    return cells;
+  });
+  return rows;
+}
+
+// Detecta si un prestador está evaluado, parcialmente evaluado o pendiente
+function estadoEvaluacion(obs) {
+  if (!obs || obs.trim() === '') return 'PENDIENTE';
+  const o = obs.toUpperCase().trim();
+  if (o.includes('EVALUADO') && !o.includes('FALTA') && !o.includes('SIN FIRMA') && !o.includes('SIN RADICAR')) {
+    return 'EVALUADO';
+  }
+  if (o.includes('EVALUADO')) return 'PARCIAL';
+  return 'PENDIENTE';
+}
+
+// ──────────────────────────────────────────────
+// PARSERS POR VIGENCIA
+// ──────────────────────────────────────────────
+
+function parse2023(rows) {
+  // Header fila 0: No. Contrato, ID Prestador, Nombre Prestador, Fecha Inicio, Fecha Fin, Municipio, Departamento, Modalidad, I TRIM, II TRIM, I BIMESTRE, NOV DIC, OBSERVACION
+  const data = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[0] || !r[2]) continue;
+    const descuentos = [r[8], r[9], r[10], r[11]].map(parseMonto).reduce((a, b) => a + b, 0);
+    data.push({
+      contrato: r[0]?.trim() || '',
+      nit: r[1]?.trim() || '',
+      prestador: r[2]?.trim() || '',
+      municipio: r[5]?.trim() || '',
+      departamento: r[6]?.trim() || '',
+      modalidad: r[7]?.trim() || '',
+      descuentos,
+      observacion: r[12]?.trim() || '',
+      estado: estadoEvaluacion(r[12]),
+    });
+  }
+  return data;
+}
+
+function parse2024(rows) {
+  // Header fila 2: Departamento, Municipio, NIT, Prestadores, Num contratos, Estado, Fecha Inicio, Fecha Final, Pb Sub, Pb Cont, Valor Percapita, Valor Contrato, Servicios, Parametrizados, SUB/CON x4 trimestres, OBSERVACIONES
+  const data = [];
+  for (let i = 3; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[3] || !r[2]) continue;
+    // Descuentos: columnas 14-21 (SUB+CON x4 trim)
+    const descSub = [r[14], r[16], r[18], r[20], r[22]].map(parseMonto).reduce((a, b) => a + b, 0);
+    const descCon = [r[15], r[17], r[19], r[21], r[23]].map(parseMonto).reduce((a, b) => a + b, 0);
+    const obsCol = r.length > 24 ? r[24] : r[r.length - 1];
+    data.push({
+      contrato: r[4]?.trim() || '',
+      nit: r[2]?.trim() || '',
+      prestador: r[3]?.trim() || '',
+      municipio: r[1]?.trim() || '',
+      departamento: r[0]?.trim() || '',
+      valorContrato: parseMonto(r[11]),
+      descuentosSub: descSub,
+      descuentosCon: descCon,
+      descuentos: descSub + descCon,
+      observacion: obsCol?.trim() || '',
+      estado: estadoEvaluacion(obsCol),
+    });
+  }
+  return data;
+}
+
+function parse2025(rows) {
+  // Header fila 2: nombre_municipio, nit, PRESTADORES, No contrato, fecha_inicio, fecha_terminacion, valor_percapita, valor_contrato, SUB/CON x5 periodos, OBSERVACIONES
+  const data = [];
+  for (let i = 3; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[2] || !r[1]) continue;
+    const descSub = [r[8], r[10], r[12], r[14], r[16]].map(parseMonto).reduce((a, b) => a + b, 0);
+    const descCon = [r[9], r[11], r[13], r[15], r[17]].map(parseMonto).reduce((a, b) => a + b, 0);
+    const obsCol = r[18] || r[r.length - 1];
+    data.push({
+      contrato: r[3]?.trim() || '',
+      nit: r[1]?.trim() || '',
+      prestador: r[2]?.trim() || '',
+      municipio: r[0]?.trim() || '',
+      departamento: '',
+      valorContrato: parseMonto(r[7]),
+      descuentosSub: descSub,
+      descuentosCon: descCon,
+      descuentos: descSub + descCon,
+      observacion: obsCol?.trim() || '',
+      estado: estadoEvaluacion(obsCol),
+    });
+  }
+  return data;
+}
+
+// ──────────────────────────────────────────────
+// FUNCIÓN PRINCIPAL — OBTENER DATOS DE UNA VIGENCIA
+// ──────────────────────────────────────────────
+
+async function obtenerDatos(vigencia) {
+  const sheetId = SHEETS[vigencia];
+  if (!sheetId) throw new Error(`Vigencia ${vigencia} no disponible`);
+  const csv = await fetchCSV(sheetId);
+  const rows = parseCSV(csv);
+  if (vigencia === 2023) return parse2023(rows);
+  if (vigencia === 2024) return parse2024(rows);
+  if (vigencia === 2025) return parse2025(rows);
+}
+
+// ──────────────────────────────────────────────
+// GENERAR REPORTE TEXTO
+// ──────────────────────────────────────────────
+
+async function generarReporte(vigencia) {
+  const datos = await obtenerDatos(vigencia);
+  if (!datos.length) return `No hay datos para vigencia ${vigencia}.`;
+
+  const evaluados   = datos.filter(d => d.estado === 'EVALUADO');
+  const parciales   = datos.filter(d => d.estado === 'PARCIAL');
+  const pendientes  = datos.filter(d => d.estado === 'PENDIENTE');
+
+  // Top descuentos — agrupar por prestador
+  const porPrestador = {};
+  for (const d of datos) {
+    if (!porPrestador[d.prestador]) porPrestador[d.prestador] = { descuentos: 0, contratos: 0 };
+    porPrestador[d.prestador].descuentos += d.descuentos;
+    porPrestador[d.prestador].contratos++;
+  }
+  const topDescuentos = Object.entries(porPrestador)
+    .sort((a, b) => b[1].descuentos - a[1].descuentos)
+    .slice(0, 5);
+
+  let msg = `📊 *REPORTE EVALUACIONES — VIGENCIA ${vigencia}*\n`;
+  msg += `─────────────────────────────\n`;
+  msg += `📋 Total contratos: *${datos.length}*\n`;
+  msg += `✅ Evaluados: *${evaluados.length}*\n`;
+  msg += `⚠️ Parcialmente evaluados: *${parciales.length}*\n`;
+  msg += `❌ Pendientes: *${pendientes.length}*\n\n`;
+
+  if (topDescuentos.length > 0) {
+    msg += `💰 *TOP DESCUENTOS POR PRESTADOR:*\n`;
+    topDescuentos.forEach(([nombre, info], i) => {
+      if (info.descuentos > 0) {
+        msg += `${i + 1}. ${nombre}: ${formatPesos(info.descuentos)}\n`;
+      }
+    });
+    msg += '\n';
+  }
+
+  if (pendientes.length > 0) {
+    msg += `❌ *PENDIENTES POR EVALUAR (${pendientes.length}):*\n`;
+    pendientes.slice(0, 10).forEach(d => {
+      msg += `• ${d.prestador} — ${d.municipio}\n`;
+    });
+    if (pendientes.length > 10) msg += `  ...y ${pendientes.length - 10} más\n`;
+    msg += '\n';
+  }
+
+  if (parciales.length > 0) {
+    msg += `⚠️ *EVALUACIÓN INCOMPLETA (${parciales.length}):*\n`;
+    parciales.slice(0, 10).forEach(d => {
+      msg += `• ${d.prestador} — ${d.observacion}\n`;
+    });
+    if (parciales.length > 10) msg += `  ...y ${parciales.length - 10} más\n`;
+  }
+
+  return msg;
+}
+
+// ──────────────────────────────────────────────
+// GENERAR EXCEL
+// ──────────────────────────────────────────────
+
+async function generarExcel(vigencia) {
+  const datos = await obtenerDatos(vigencia);
+
+  const filas = datos.map(d => ({
+    'No. Contrato': d.contrato,
+    'NIT': d.nit,
+    'Prestador': d.prestador,
+    'Municipio': d.municipio,
+    'Departamento': d.departamento,
+    'Valor Contrato': d.valorContrato || 0,
+    'Total Descuentos Sub': d.descuentosSub || d.descuentos || 0,
+    'Total Descuentos Con': d.descuentosCon || 0,
+    'Total Descuentos': d.descuentos,
+    'Estado': d.estado,
+    'Observación': d.observacion,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(filas);
+
+  // Ancho de columnas
+  ws['!cols'] = [
+    { wch: 18 }, { wch: 14 }, { wch: 45 }, { wch: 18 },
+    { wch: 15 }, { wch: 20 }, { wch: 22 }, { wch: 22 },
+    { wch: 20 }, { wch: 15 }, { wch: 50 },
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, `Vigencia ${vigencia}`);
+
+  const tmpPath = path.join(os.tmpdir(), `evaluaciones_${vigencia}_${Date.now()}.xlsx`);
+  XLSX.writeFile(wb, tmpPath);
+  return tmpPath;
+}
+
+// ──────────────────────────────────────────────
+// REPORTE COMPARATIVO MULTI-VIGENCIA
+// ──────────────────────────────────────────────
+
+async function reporteComparativo(vigencias) {
+  const resultados = [];
+  for (const v of vigencias) {
+    if (!SHEETS[v]) continue;
+    const datos = await obtenerDatos(v);
+    const evaluados  = datos.filter(d => d.estado === 'EVALUADO').length;
+    const parciales  = datos.filter(d => d.estado === 'PARCIAL').length;
+    const pendientes = datos.filter(d => d.estado === 'PENDIENTE').length;
+    const totalDesc  = datos.reduce((s, d) => s + (d.descuentos || 0), 0);
+    resultados.push({ vigencia: v, total: datos.length, evaluados, parciales, pendientes, totalDesc });
+  }
+
+  let msg = `📊 *COMPARATIVO EVALUACIONES*\n─────────────────────────────\n`;
+  for (const r of resultados) {
+    msg += `\n📅 *Vigencia ${r.vigencia}*\n`;
+    msg += `  • Total contratos: ${r.total}\n`;
+    msg += `  • ✅ Evaluados: ${r.evaluados}\n`;
+    msg += `  • ⚠️ Parciales: ${r.parciales}\n`;
+    msg += `  • ❌ Pendientes: ${r.pendientes}\n`;
+    if (r.totalDesc > 0) msg += `  • 💰 Total descuentos: ${formatPesos(r.totalDesc)}\n`;
+  }
+  return msg;
+}
+
+module.exports = { generarReporte, generarExcel, obtenerDatos, reporteComparativo, SHEETS };

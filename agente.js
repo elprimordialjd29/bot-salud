@@ -6,6 +6,7 @@
 
 require('dotenv').config({ override: true });
 const Anthropic = require('@anthropic-ai/sdk');
+const evaluaciones = require('./evaluaciones');
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -258,6 +259,24 @@ async function procesarMensaje(texto, esAdmin = true) {
   const menuCmds = ['menú', 'menu', 'ayuda', 'help', '/menu', '/ayuda', '/help'];
   if (menuCmds.includes(t.toLowerCase())) {
     return mensajeMenu();
+  }
+
+  // ── COMANDOS DE EVALUACIONES ──
+  const tl = t.toLowerCase();
+
+  // Detectar vigencia en el texto
+  const vigMatch = tl.match(/\b(2023|2024|2025|2026)\b/);
+  const vigencia = vigMatch ? parseInt(vigMatch[1]) : null;
+
+  // Reporte de una vigencia específica
+  if (vigencia && (tl.includes('eval') || tl.includes('reporte') || tl.includes('descuento') || tl.includes('prestador') || tl.includes('contrato'))) {
+    return { tipo: 'evaluacion', vigencia, excel: tl.includes('excel') || tl.includes('archivo') };
+  }
+
+  // Comparativo de todas las vigencias
+  if ((tl.includes('eval') || tl.includes('comparar') || tl.includes('todas') || tl.includes('vigencias')) &&
+      (tl.includes('eval') || tl.includes('reporte'))) {
+    return { tipo: 'evaluacion_comparativo' };
   }
 
   // Opciones numéricas del menú
