@@ -196,14 +196,24 @@ bot.on('polling_error', (err) => {
 // ──────────────────────────────────────────────
 
 async function enviarMensaje(chatId, texto) {
-  try {
-    await bot.sendMessage(chatId, texto, { parse_mode: 'Markdown' });
-  } catch(e) {
-    // Si falla el formato Markdown, enviar como texto plano
+  const MAX = 4000;
+  const partes = [];
+  while (texto.length > 0) {
+    if (texto.length <= MAX) { partes.push(texto); break; }
+    let corte = texto.lastIndexOf('\n', MAX);
+    if (corte < MAX * 0.5) corte = MAX;
+    partes.push(texto.substring(0, corte));
+    texto = texto.substring(corte).trimStart();
+  }
+  for (const parte of partes) {
     try {
-      await bot.sendMessage(chatId, texto);
-    } catch(e2) {
-      console.error('Error enviando mensaje:', e2.message);
+      await bot.sendMessage(chatId, parte, { parse_mode: 'Markdown' });
+    } catch(e) {
+      try {
+        await bot.sendMessage(chatId, parte);
+      } catch(e2) {
+        console.error('Error enviando mensaje:', e2.message);
+      }
     }
   }
 }
