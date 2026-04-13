@@ -280,7 +280,18 @@ async function generarReporte(vigencia) {
   if (pendientes.length > 0) {
     msg += `❌ *PENDIENTES DE EVALUAR (${pendientes.length})*\n`;
     pendientes.forEach((d, i) => {
-      msg += `  ${i + 1}. ${d.prestador}\n     📍 ${d.municipio}${d.contrato ? ' — ' + d.contrato : ''}\n`;
+      // Detectar trimestres sin datos
+      const trimPendientes = d.trimestres
+        ? Object.entries(d.trimestres)
+            .filter(([, v]) => v.sub === 0 && v.con === 0)
+            .map(([k]) => k.split(' ').slice(0, 2).join(' '))
+        : [];
+      msg += `  ${i + 1}. *${d.prestador}*\n`;
+      msg += `     📍 ${d.municipio}${d.contrato ? ' — ' + d.contrato : ''}\n`;
+      if (trimPendientes.length > 0) {
+        msg += `     ⏳ Sin datos: ${trimPendientes.join(', ')}\n`;
+      }
+      if (d.observacion) msg += `     📝 ${d.observacion}\n`;
     });
     msg += '\n';
   }
