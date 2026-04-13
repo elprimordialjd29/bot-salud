@@ -66,6 +66,15 @@ const MENU_ACCIONES = {
   '6': 'prestador con menos descuento 2025',
   '7': 'prestador con más descuento 2025 trimestre 1',
   '8': 'prestador con más descuento 2025 trimestre 2',
+  // Comandos slash de BotFather
+  '/reporte2025':    'reporte evaluaciones 2025',
+  '/reporte2024':    'reporte evaluaciones 2024',
+  '/reporte2023':    'reporte evaluaciones 2023',
+  '/comparativo':    'comparar evaluaciones todas las vigencias',
+  '/masdescuento':   'prestador con más descuento 2025',
+  '/menosdescuento': 'prestador con menos descuento 2025',
+  '/ranking1trim':   'prestador con más descuento 2025 trimestre 1',
+  '/ranking2trim':   'prestador con más descuento 2025 trimestre 2',
 };
 
 // ──────────────────────────────────────────────
