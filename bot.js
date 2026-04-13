@@ -159,6 +159,22 @@ bot.on('message', async (msg) => {
       return;
     }
 
+    // ── PENDIENTES UNA VIGENCIA ──
+    if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'pendientes') {
+      await bot.sendChatAction(chatId, 'typing');
+      const reporte = await evaluaciones.reportePendientes(respuesta.vigencia);
+      await enviarMensaje(chatId, reporte);
+      return;
+    }
+
+    // ── PENDIENTES TODAS LAS VIGENCIAS ──
+    if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'pendientes_todas') {
+      await bot.sendChatAction(chatId, 'typing');
+      const reporte = await evaluaciones.reportePendientesTodas();
+      await enviarMensaje(chatId, reporte);
+      return;
+    }
+
     // ── CONSULTA PRESTADOR ──
     if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'consulta_prestador') {
       await bot.sendChatAction(chatId, 'typing');

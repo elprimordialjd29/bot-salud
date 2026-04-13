@@ -33,26 +33,27 @@ Escribe *menú* para ver todas las opciones disponibles 📋`;
 function mensajeMenu() {
   return `📋 *MENÚ — Bot Evaluaciones y Contratos*
 
-*📊 Reportes generales:*
+*📊 Reportes completos:*
 1️⃣ Reporte evaluaciones 2023
 2️⃣ Reporte evaluaciones 2024
 3️⃣ Reporte evaluaciones 2025
 4️⃣ Comparativo todas las vigencias
 
+*❌ Pendientes de evaluar:*
+5️⃣ Pendientes 2025
+6️⃣ Pendientes 2024
+7️⃣ Pendientes 2023
+8️⃣ Pendientes todas las vigencias
+
 *📈 Rankings de descuentos:*
-5️⃣ Prestador con más descuento 2025
-6️⃣ Prestador con menos descuento 2025
-7️⃣ Ranking 2025 por trimestre 1
-8️⃣ Ranking 2025 por trimestre 2
+9️⃣ Prestador con más descuento 2025
+🔟 Prestador con menos descuento 2025
+1️⃣1️⃣ Ranking trimestre 1 — 2025
+1️⃣2️⃣ Ranking trimestre 2 — 2025
 
 *🔍 Consulta por prestador o contrato:*
-Escribe el *nombre del prestador* o el *número de contrato* directamente.
-
-_Ejemplos:_
-• \`DUSAKAWI\`
-• \`20001-064-PMT\`
-• \`KANKUAMA subsidiado\`
-• \`ver prestador DUSAKAWI 2024\`
+Escribe el nombre o número de contrato directamente.
+_Ejemplo: \`DUSAKAWI\` o \`20001-064-PMT\`_
 
 Escríbeme tu pregunta 💬`;
 }
@@ -62,19 +63,27 @@ const MENU_ACCIONES = {
   '2': 'reporte evaluaciones 2024',
   '3': 'reporte evaluaciones 2025',
   '4': 'comparar evaluaciones todas las vigencias',
-  '5': 'prestador con más descuento 2025',
-  '6': 'prestador con menos descuento 2025',
-  '7': 'prestador con más descuento 2025 trimestre 1',
-  '8': 'prestador con más descuento 2025 trimestre 2',
-  // Comandos slash de BotFather
-  '/reporte2025':    'reporte evaluaciones 2025',
-  '/reporte2024':    'reporte evaluaciones 2024',
-  '/reporte2023':    'reporte evaluaciones 2023',
-  '/comparativo':    'comparar evaluaciones todas las vigencias',
-  '/masdescuento':   'prestador con más descuento 2025',
-  '/menosdescuento': 'prestador con menos descuento 2025',
-  '/ranking1trim':   'prestador con más descuento 2025 trimestre 1',
-  '/ranking2trim':   'prestador con más descuento 2025 trimestre 2',
+  '5': 'pendientes evaluacion 2025',
+  '6': 'pendientes evaluacion 2024',
+  '7': 'pendientes evaluacion 2023',
+  '8': 'pendientes evaluaciones todas las vigencias',
+  '9': 'prestador con más descuento 2025',
+  '10': 'prestador con menos descuento 2025',
+  '11': 'prestador con más descuento 2025 trimestre 1',
+  '12': 'prestador con más descuento 2025 trimestre 2',
+  // Comandos slash
+  '/reporte2025':       'reporte evaluaciones 2025',
+  '/reporte2024':       'reporte evaluaciones 2024',
+  '/reporte2023':       'reporte evaluaciones 2023',
+  '/comparativo':       'comparar evaluaciones todas las vigencias',
+  '/pendientes2025':    'pendientes evaluacion 2025',
+  '/pendientes2024':    'pendientes evaluacion 2024',
+  '/pendientes2023':    'pendientes evaluacion 2023',
+  '/pendientestodas':   'pendientes evaluaciones todas las vigencias',
+  '/masdescuento':      'prestador con más descuento 2025',
+  '/menosdescuento':    'prestador con menos descuento 2025',
+  '/ranking1trim':      'prestador con más descuento 2025 trimestre 1',
+  '/ranking2trim':      'prestador con más descuento 2025 trimestre 2',
 };
 
 // ──────────────────────────────────────────────
@@ -112,6 +121,15 @@ async function procesarMensaje(texto, esAdmin = true) {
     if (/iii trim|tercer trim|trimestre 3|3 trim/.test(s)) return 'III Trim';
     if (/iv trim|cuarto trim|trimestre 4|4 trim/.test(s)) return 'IV Trim';
     return null;
+  }
+
+  // ── PENDIENTES ESPECÍFICOS ──
+  const esPendiente = /pendiente|sin evaluar/.test(tlFinal);
+  if (esPendiente) {
+    const todas = /todas|todos|todas las|vigencias/.test(tlFinal);
+    if (todas) return { tipo: 'pendientes_todas' };
+    if (vigencia) return { tipo: 'pendientes', vigencia };
+    return { tipo: 'pendientes', vigencia: 2025 }; // default
   }
 
   // ── RANKING DESCUENTOS ──

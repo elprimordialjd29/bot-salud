@@ -308,6 +308,62 @@ async function generarReporte(vigencia) {
 }
 
 // ──────────────────────────────────────────────
+// REPORTE SOLO PENDIENTES
+// ──────────────────────────────────────────────
+
+function formatPendientes(datos, vigencia) {
+  const pendientes = datos.filter(d => d.estado === 'PENDIENTE');
+  const parciales  = datos.filter(d => d.estado === 'PARCIAL');
+  if (!pendientes.length && !parciales.length) return `✅ Sin pendientes en vigencia ${vigencia}.`;
+
+  let msg = `\n📅 *VIGENCIA ${vigencia}* — ${pendientes.length} pendientes, ${parciales.length} parciales\n`;
+
+  pendientes.forEach((d, i) => {
+    const trimPend = d.trimestres
+      ? Object.entries(d.trimestres)
+          .filter(([, v]) => v.sub === 0 && v.con === 0)
+          .map(([k]) => k.split(' ').slice(0, 2).join(' '))
+      : [];
+    msg += `  ${i + 1}. *${d.prestador}*\n`;
+    msg += `     📍 ${d.municipio}${d.contrato ? ' — ' + d.contrato : ''}\n`;
+    if (trimPend.length > 0) msg += `     ⏳ Sin datos: ${trimPend.join(', ')}\n`;
+    if (d.observacion) msg += `     📝 ${d.observacion}\n`;
+  });
+
+  if (parciales.length > 0) {
+    msg += `\n⚠️ *EVALUACIÓN INCOMPLETA (${parciales.length})*\n`;
+    parciales.forEach((d, i) => {
+      msg += `  ${i + 1}. *${d.prestador}*\n`;
+      msg += `     📍 ${d.municipio}${d.contrato ? ' — ' + d.contrato : ''}\n`;
+      if (d.observacion) msg += `     📝 ${d.observacion}\n`;
+    });
+  }
+  return msg;
+}
+
+async function reportePendientes(vigencia) {
+  const datos = await obtenerDatos(vigencia);
+  let msg = `╔══════════════════════════════╗\n`;
+  msg += `║  ❌ PENDIENTES ${vigencia}         ║\n`;
+  msg += `╚══════════════════════════════╝\n`;
+  msg += formatPendientes(datos, vigencia);
+  return msg;
+}
+
+async function reportePendientesTodas() {
+  let msg = `╔══════════════════════════════╗\n`;
+  msg += `║  ❌ PENDIENTES TODAS VIGENCIAS║\n`;
+  msg += `╚══════════════════════════════╝\n`;
+  for (const v of [2023, 2024, 2025]) {
+    if (!SHEETS[v]) continue;
+    const datos = await obtenerDatos(v);
+    msg += formatPendientes(datos, v);
+    msg += `─────────────────────────────\n`;
+  }
+  return msg;
+}
+
+// ──────────────────────────────────────────────
 // GENERAR EXCEL
 // ──────────────────────────────────────────────
 
@@ -571,4 +627,4 @@ async function generarExcelPrestador(vigencia, busqueda) {
   return tmpPath;
 }
 
-module.exports = { generarReporte, generarExcel, obtenerDatos, reporteComparativo, rankingDescuentos, consultarPrestador, generarExcelPrestador, SHEETS };
+module.exports = { generarReporte, generarExcel, obtenerDatos, reporteComparativo, rankingDescuentos, consultarPrestador, generarExcelPrestador, reportePendientes, reportePendientesTodas, SHEETS };
