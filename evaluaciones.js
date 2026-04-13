@@ -298,11 +298,32 @@ async function generarReporte(vigencia) {
 
   if (parciales.length > 0) {
     msg += `⚠️ *EVALUACIÓN INCOMPLETA (${parciales.length})*\n`;
-    parciales.slice(0, 10).forEach((d, i) => {
-      msg += `  ${i + 1}. ${d.prestador}\n     📝 ${d.observacion}\n`;
+    parciales.forEach((d, i) => {
+      const trimPend = d.trimestres
+        ? Object.entries(d.trimestres)
+            .filter(([, v]) => v.sub === 0 && v.con === 0)
+            .map(([k]) => k.split(' ').slice(0, 2).join(' '))
+        : [];
+      msg += `  ${i + 1}. *${d.prestador}*\n`;
+      msg += `     📍 ${d.municipio}${d.contrato ? ' — ' + d.contrato : ''}\n`;
+      if (trimPend.length > 0) msg += `     ⏳ Sin datos: ${trimPend.join(', ')}\n`;
+      if (d.observacion) msg += `     📝 ${d.observacion}\n`;
     });
-    if (parciales.length > 10) msg += `  _...y ${parciales.length - 10} más_\n`;
+    msg += '\n';
   }
+
+  // ── TOTALES VIGENCIA ──
+  const totalSubVig = datos.reduce((s, d) => s + (d.descuentosSub || 0), 0);
+  const totalConVig = datos.reduce((s, d) => s + (d.descuentosCon || 0), 0);
+  const totalVig    = totalSubVig + totalConVig;
+
+  msg += `╔══════════════════════════════╗\n`;
+  msg += `║  💰 TOTAL DESCUENTOS ${vigencia}  ║\n`;
+  msg += `╚══════════════════════════════╝\n`;
+  msg += `🔵 Subsidiado:   *${formatPesos(totalSubVig)}*\n`;
+  msg += `🟢 Contributivo: *${formatPesos(totalConVig)}*\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `💎 *TOTAL GENERAL: ${formatPesos(totalVig)}*\n`;
 
   return msg;
 }
