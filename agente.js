@@ -56,8 +56,11 @@ Escribe el nombre o número de contrato directamente.
 _Ejemplo: \`DUSAKAWI\` o \`20001-064-PMT\`_
 
 *🌐 Radicación Dusakawi EPSI:*
-Escribe: _radicación [nombre prestador]_
-_Ejemplo: \`radicación WINTUKWA\`_
+1️⃣3️⃣ Quiénes radicaron trimestre 1 — 2025
+1️⃣4️⃣ Quiénes radicaron trimestre 2 — 2025
+1️⃣5️⃣ Pendientes por radicar 2025
+O escribe: _radicación [contrato o nombre]_
+_Ejemplo: \`radicación 44001-06-DNT\` o \`radicación WINTUKWA\`_
 
 Escríbeme tu pregunta 💬`;
 }
@@ -88,6 +91,12 @@ const MENU_ACCIONES = {
   '/menosdescuento':    'prestador con menos descuento 2025',
   '/ranking1trim':      'prestador con más descuento 2025 trimestre 1',
   '/ranking2trim':      'prestador con más descuento 2025 trimestre 2',
+  '13':                 'quiénes radicaron primer trimestre 2025',
+  '14':                 'quiénes radicaron segundo trimestre 2025',
+  '15':                 'pendientes por radicación 2025',
+  '/radicados1trim':    'quiénes radicaron primer trimestre 2025',
+  '/radicados2trim':    'quiénes radicaron segundo trimestre 2025',
+  '/pendientesradic':   'pendientes por radicación 2025',
 };
 
 // ──────────────────────────────────────────────
@@ -169,12 +178,28 @@ async function procesarMensaje(texto, esAdmin = true) {
   // ── CONSULTA RADICACIÓN DUSAKAWI ──
   const esRadicacion = /radic|dusakawi|recepci[oó]n cuentas|estado cuenta|cuentas m[eé]dicas|consulta recepci/.test(tlFinal);
   if (esRadicacion) {
+    // Detectar si es reporte masivo (quiénes radicaron / pendientes)
+    const esMasivo = /qui[eé]nes|todos|todas|masivo|listado|reporte|pendientes? por rad|primer trim|segundo trim|tercer trim|cuarto trim|i trim|ii trim|iii trim|iv trim/.test(tlFinal);
+    if (esMasivo) {
+      return {
+        tipo: 'dusakawi_masivo',
+        vigencia: vigencia || 2025,
+        trimestre: detectarTrimestre(tlFinal),
+        regimen: tlFinal.includes('subsidiado') ? 'sub' : tlFinal.includes('contributivo') ? 'con' : null,
+      };
+    }
+    // Consulta individual por contrato/prestador
     let busqueda = tlFinal;
     for (const kw of ['consultar','ver','buscar','estado','radicacion','radicación','dusakawi','recepcion','recepción','cuentas','médicas','medicas','de','la','el','prestador']) {
       busqueda = busqueda.replace(new RegExp(`\\b${kw}\\b`, 'g'), '');
     }
-    busqueda = busqueda.replace(/\b(2023|2024|2025|2026)\b/, '').trim();
-    return { tipo: 'dusakawi', busqueda: busqueda || '', vigencia };
+    busqueda = busqueda.replace(/\b(2023|2024|2025|2026)\b/, '').replace(/subsidiado|contributivo/, '').trim();
+    return {
+      tipo: 'dusakawi',
+      busqueda: busqueda || '',
+      vigencia: vigencia || 2025,
+      regimen: tlFinal.includes('subsidiado') ? 'sub' : tlFinal.includes('contributivo') ? 'con' : null,
+    };
   }
 
   // ── CONSULTA ESPECÍFICA DE PRESTADOR O CONTRATO ──

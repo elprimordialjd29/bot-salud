@@ -201,25 +201,43 @@ bot.on('message', async (msg) => {
       return;
     }
 
-    // ── DUSAKAWI RADICACIÓN ──
+    // ── DUSAKAWI RADICACIÓN INDIVIDUAL ──
     if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'dusakawi') {
       await bot.sendChatAction(chatId, 'typing');
-      await bot.sendMessage(chatId, `🌐 Consultando sistema Dusakawi EPSI...\n_Esto puede tardar unos segundos._`, { parse_mode: 'Markdown' });
+      await bot.sendMessage(chatId, `🌐 Consultando sistema Dusakawi EPSI...\n_Esto puede tardar unos 30 segundos._`, { parse_mode: 'Markdown' });
       try {
         const resultado = await dusakawi.consultarEstadoRadicacion({
           prestador: respuesta.busqueda,
+          contrato: /^[a-z0-9]+-[a-z0-9]+-[a-z0-9]+/i.test(respuesta.busqueda) ? respuesta.busqueda : '',
+          vigencia: respuesta.vigencia || 2025,
+          regimen: respuesta.regimen,
         });
-        // Enviar screenshots si existen (para debug / confirmación visual)
-        for (const sc of resultado.screenshots || []) {
-          try {
-            await bot.sendPhoto(chatId, sc);
-            try { fs.unlinkSync(sc); } catch(e) {}
-          } catch(e) {}
-        }
         await enviarMensaje(chatId, resultado.texto);
       } catch(e) {
         console.error('❌ Error Dusakawi:', e.message);
         await bot.sendMessage(chatId, `❌ Error al consultar Dusakawi: ${e.message}`);
+      }
+      return;
+    }
+
+    // ── DUSAKAWI RADICACIÓN MASIVA ──
+    if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'dusakawi_masivo') {
+      await bot.sendChatAction(chatId, 'typing');
+      const trimStr = respuesta.trimestre ? ` — ${respuesta.trimestre}` : '';
+      await bot.sendMessage(chatId,
+        `🌐 Consultando radicación en Dusakawi EPSI${trimStr}...\n_Esto puede tardar 2-5 minutos (se consultan todos los contratos)._`,
+        { parse_mode: 'Markdown' }
+      );
+      try {
+        const reporte = await dusakawi.reporteMasivoRadicacion({
+          vigencia: respuesta.vigencia || 2025,
+          trimestre: respuesta.trimestre,
+          regimen: respuesta.regimen,
+        });
+        await enviarMensaje(chatId, reporte);
+      } catch(e) {
+        console.error('❌ Error Dusakawi masivo:', e.message);
+        await bot.sendMessage(chatId, `❌ Error al generar reporte de radicación: ${e.message}`);
       }
       return;
     }
