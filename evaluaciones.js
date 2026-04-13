@@ -206,12 +206,13 @@ async function generarReporte(vigencia) {
   const pParc = total > 0 ? ((parciales.length / total) * 100).toFixed(1) : 0;
   const pPend = total > 0 ? ((pendientes.length / total) * 100).toFixed(1) : 0;
 
-  let msg = `📊 *REPORTE EVALUACIONES — VIGENCIA ${vigencia}*\n`;
-  msg += `─────────────────────────────\n`;
+  let msg = `╔══════════════════════════════╗\n`;
+  msg += `║  📊 EVALUACIONES ${vigencia}       ║\n`;
+  msg += `╚══════════════════════════════╝\n\n`;
   msg += `📋 Total contratos: *${total}*\n`;
-  msg += `✅ Evaluados: *${evaluados.length}* (${pEval}%)\n`;
-  msg += `⚠️ Parcialmente evaluados: *${parciales.length}* (${pParc}%)\n`;
-  msg += `❌ Pendientes: *${pendientes.length}* (${pPend}%)\n\n`;
+  msg += `✅ Evaluados:       *${evaluados.length}* (${pEval}%)\n`;
+  msg += `⚠️ Parciales:       *${parciales.length}* (${pParc}%)\n`;
+  msg += `❌ Pendientes:      *${pendientes.length}* (${pPend}%)\n`;
 
   // ── Descuentos por trimestre → prestador → régimen ──
   const periodos = {};
@@ -226,7 +227,7 @@ async function generarReporte(vigencia) {
   }
 
   if (Object.keys(periodos).length > 0) {
-    msg += `📅 *DESCUENTOS POR TRIMESTRE Y RÉGIMEN:*\n`;
+    msg += `\n📅 *DESCUENTOS POR TRIMESTRE Y RÉGIMEN*\n`;
     let num = 1;
     for (const [periodo, prestadores] of Object.entries(periodos)) {
       const listaSub = Object.entries(prestadores)
@@ -241,50 +242,56 @@ async function generarReporte(vigencia) {
       const totalCon = listaCon.reduce((s, x) => s + x.v, 0);
       if (totalSub + totalCon === 0) continue;
 
-      msg += `\n*${num}. ${periodo}*\n`;
+      msg += `\n┌─ *${num}. ${periodo}*\n`;
 
       if (listaSub.length > 0) {
-        msg += `  _Subsidiado:_\n`;
-        listaSub.forEach(({ n, v }) => { msg += `  • ${n}: ${formatPesos(v)}\n`; });
-        msg += `  *Total Sub: ${formatPesos(totalSub)}*\n`;
+        msg += `│ 🔵 *Subsidiado:*\n`;
+        listaSub.slice(0, 10).forEach(({ n, v }, i) => {
+          msg += `│  ${i + 1}. ${n}\n│     ${formatPesos(v)}\n`;
+        });
+        if (listaSub.length > 10) msg += `│  _...y ${listaSub.length - 10} más_\n`;
+        msg += `│  ➤ *Total Sub: ${formatPesos(totalSub)}*\n`;
       }
       if (listaCon.length > 0) {
-        msg += `  _Contributivo:_\n`;
-        listaCon.forEach(({ n, v }) => { msg += `  • ${n}: ${formatPesos(v)}\n`; });
-        msg += `  *Total Con: ${formatPesos(totalCon)}*\n`;
+        msg += `│ 🟢 *Contributivo:*\n`;
+        listaCon.slice(0, 10).forEach(({ n, v }, i) => {
+          msg += `│  ${i + 1}. ${n}\n│     ${formatPesos(v)}\n`;
+        });
+        if (listaCon.length > 10) msg += `│  _...y ${listaCon.length - 10} más_\n`;
+        msg += `│  ➤ *Total Con: ${formatPesos(totalCon)}*\n`;
       }
-      msg += `  *Total: ${formatPesos(totalSub + totalCon)}*\n`;
+      msg += `└─ 💰 *TOTAL: ${formatPesos(totalSub + totalCon)}*\n`;
       num++;
     }
     msg += '\n';
   }
 
   if (topDescuentos.length > 0) {
-    msg += `🏆 *RANKING PRESTADORES POR DESCUENTO:*\n`;
+    msg += `\n🏆 *TOP PRESTADORES — TOTAL DESCUENTOS*\n`;
     topDescuentos.forEach(([nombre, info], i) => {
       if (info.descuentos > 0) {
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-        msg += `${medal} ${nombre}: ${formatPesos(info.descuentos)}\n`;
+        msg += `${medal} *${nombre}*\n   ${formatPesos(info.descuentos)}\n`;
       }
     });
     msg += '\n';
   }
 
   if (pendientes.length > 0) {
-    msg += `❌ *PENDIENTES POR EVALUAR (${pendientes.length}):*\n`;
-    pendientes.slice(0, 10).forEach(d => {
-      msg += `• ${d.prestador} — ${d.municipio}\n`;
+    msg += `❌ *PENDIENTES DE EVALUAR (${pendientes.length})*\n`;
+    pendientes.slice(0, 10).forEach((d, i) => {
+      msg += `  ${i + 1}. ${d.prestador}\n     📍 ${d.municipio}\n`;
     });
-    if (pendientes.length > 10) msg += `  ...y ${pendientes.length - 10} más\n`;
+    if (pendientes.length > 10) msg += `  _...y ${pendientes.length - 10} más_\n`;
     msg += '\n';
   }
 
   if (parciales.length > 0) {
-    msg += `⚠️ *EVALUACIÓN INCOMPLETA (${parciales.length}):*\n`;
-    parciales.slice(0, 10).forEach(d => {
-      msg += `• ${d.prestador} — ${d.observacion}\n`;
+    msg += `⚠️ *EVALUACIÓN INCOMPLETA (${parciales.length})*\n`;
+    parciales.slice(0, 10).forEach((d, i) => {
+      msg += `  ${i + 1}. ${d.prestador}\n     📝 ${d.observacion}\n`;
     });
-    if (parciales.length > 10) msg += `  ...y ${parciales.length - 10} más\n`;
+    if (parciales.length > 10) msg += `  _...y ${parciales.length - 10} más_\n`;
   }
 
   return msg;
