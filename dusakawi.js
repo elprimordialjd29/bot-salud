@@ -1,77 +1,70 @@
 /**
- * dusakawi.js — Consulta automática al sistema Dusakawi EPSI
- * Accede a Gestión de Cuentas Médicas → Consulta Recepción
- * para validar radicación de contratos por trimestre y régimen
+ * dusakawi.js — Consulta automática al sistema Dusakawi EPSI (ASD)
+ * Portal: asdempleados.dusakawiepsi.com
+ * Sección: Gestión de Cuentas Médicas → Consulta Recepción
  */
 
 require('dotenv').config({ override: true });
 const puppeteer = require('puppeteer');
-const path = require('path');
-const os = require('os');
-const fs = require('fs');
 const evaluaciones = require('./evaluaciones');
 
-const DUSAKAWI_URL  = 'https://dusakawiepsi.com/';
+const LOGIN_URL   = 'http://asdempleados.dusakawiepsi.com:8080/sie_dusakawi/';
+const CONSULTA_URL = 'http://asdempleados.dusakawiepsi.com:8080/sie_dusakawi/pages/audit/reception_consulta_support_rips/reception_consulta_support_rips.xhtml?SW_CREACION_EPS=1';
+
 const DUSAKAWI_USER = process.env.DUSAKAWI_USER || '1065640456';
 const DUSAKAWI_PASS = process.env.DUSAKAWI_PASS || 'S@lomon1920';
+const ANNO_TRABAJO  = '2026';
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ──────────────────────────────────────────────
 // TRIMESTRES
 // ──────────────────────────────────────────────
 
-const TRIMESTRES_2025 = [
-  { nombre: 'I Trim',     inicio: new Date('2025-01-01'), fin: new Date('2025-03-31') },
-  { nombre: 'II Trim',    inicio: new Date('2025-04-01'), fin: new Date('2025-06-30') },
-  { nombre: 'III Trim',   inicio: new Date('2025-07-01'), fin: new Date('2025-09-30') },
-  { nombre: 'IV Trim',    inicio: new Date('2025-10-01'), fin: new Date('2025-12-31') },
-  { nombre: 'V Bimestre', inicio: new Date('2026-01-01'), fin: new Date('2026-02-28') },
-];
-
-const TRIMESTRES_2024 = [
-  { nombre: 'I Trim',     inicio: new Date('2024-01-01'), fin: new Date('2024-03-31') },
-  { nombre: 'II Trim',    inicio: new Date('2024-04-01'), fin: new Date('2024-06-30') },
-  { nombre: 'III Trim',   inicio: new Date('2024-07-01'), fin: new Date('2024-09-30') },
-  { nombre: 'IV Trim',    inicio: new Date('2024-10-01'), fin: new Date('2024-12-31') },
-  { nombre: 'V Bimestre', inicio: new Date('2025-01-01'), fin: new Date('2025-02-28') },
-];
-
-const TRIMESTRES_2023 = [
-  { nombre: 'I Trim',     inicio: new Date('2023-01-01'), fin: new Date('2023-03-31') },
-  { nombre: 'II Trim',    inicio: new Date('2023-04-01'), fin: new Date('2023-06-30') },
-  { nombre: 'III Trim',   inicio: new Date('2023-07-01'), fin: new Date('2023-09-30') },
-  { nombre: 'IV Trim',    inicio: new Date('2023-10-01'), fin: new Date('2023-12-31') },
-];
-
-function getTrimestres(vigencia) {
-  if (vigencia === 2024) return TRIMESTRES_2024;
-  if (vigencia === 2023) return TRIMESTRES_2023;
-  return TRIMESTRES_2025;
-}
+const TRIMESTRES = {
+  2025: [
+    { nombre: 'I Trim',     inicio: new Date('2025-01-01'), fin: new Date('2025-03-31') },
+    { nombre: 'II Trim',    inicio: new Date('2025-04-01'), fin: new Date('2025-06-30') },
+    { nombre: 'III Trim',   inicio: new Date('2025-07-01'), fin: new Date('2025-09-30') },
+    { nombre: 'IV Trim',    inicio: new Date('2025-10-01'), fin: new Date('2025-12-31') },
+    { nombre: 'V Bimestre', inicio: new Date('2026-01-01'), fin: new Date('2026-02-28') },
+  ],
+  2024: [
+    { nombre: 'I Trim',     inicio: new Date('2024-01-01'), fin: new Date('2024-03-31') },
+    { nombre: 'II Trim',    inicio: new Date('2024-04-01'), fin: new Date('2024-06-30') },
+    { nombre: 'III Trim',   inicio: new Date('2024-07-01'), fin: new Date('2024-09-30') },
+    { nombre: 'IV Trim',    inicio: new Date('2024-10-01'), fin: new Date('2024-12-31') },
+    { nombre: 'V Bimestre', inicio: new Date('2025-01-01'), fin: new Date('2025-02-28') },
+  ],
+  2023: [
+    { nombre: 'I Trim',     inicio: new Date('2023-01-01'), fin: new Date('2023-03-31') },
+    { nombre: 'II Trim',    inicio: new Date('2023-04-01'), fin: new Date('2023-06-30') },
+    { nombre: 'III Trim',   inicio: new Date('2023-07-01'), fin: new Date('2023-09-30') },
+    { nombre: 'IV Trim',    inicio: new Date('2023-10-01'), fin: new Date('2023-12-31') },
+  ],
+};
 
 function fechaATrimestre(fechaStr, vigencia) {
-  // Formatos posibles: "2025/03/18 12:54", "2025-03-18", "18/03/2025"
-  let d;
+  if (!fechaStr) return null;
   try {
-    // Normalizar
-    const s = fechaStr.replace(/\//g, '-').trim();
-    // Detectar formato YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-      d = new Date(s.substring(0, 10));
-    } else if (/^\d{2}-\d{2}-\d{4}/.test(s)) {
-      // DD-MM-YYYY
-      const parts = s.substring(0, 10).split('-');
-      d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+    const s = fechaStr.trim();
+    let d;
+    // Formato "2025/03/18 12:54" o "2025-03-18 12:54"
+    if (/^\d{4}[\/\-]\d{2}[\/\-]\d{2}/.test(s)) {
+      d = new Date(s.replace(/\//g, '-').substring(0, 10));
+    } else if (/^\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(s)) {
+      const p = s.substring(0, 10).replace(/\//g, '-').split('-');
+      d = new Date(`${p[2]}-${p[1]}-${p[0]}`);
     } else {
       d = new Date(s);
     }
+    if (isNaN(d)) return null;
+    const trims = TRIMESTRES[vigencia] || TRIMESTRES[2025];
+    for (const t of trims) {
+      if (d >= t.inicio && d <= t.fin) return t.nombre;
+    }
+    return null;
   } catch(e) { return null; }
-
-  if (isNaN(d)) return null;
-  const trims = getTrimestres(vigencia);
-  for (const t of trims) {
-    if (d >= t.inicio && d <= t.fin) return t.nombre;
-  }
-  return null;
 }
 
 // ──────────────────────────────────────────────
@@ -81,11 +74,7 @@ function fechaATrimestre(fechaStr, vigencia) {
 async function abrirBrowser() {
   return puppeteer.launch({
     headless: 'new',
-    args: [
-      '--no-sandbox', '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage', '--disable-gpu',
-      '--window-size=1400,900',
-    ],
+    args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--window-size=1400,900'],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     defaultViewport: { width: 1400, height: 900 },
     timeout: 60000,
@@ -97,165 +86,83 @@ async function abrirBrowser() {
 // ──────────────────────────────────────────────
 
 async function login(page) {
-  await page.goto(DUSAKAWI_URL, { waitUntil: 'networkidle2', timeout: 50000 });
-  await page.waitForTimeout(2000);
+  await page.goto(LOGIN_URL, { waitUntil: 'networkidle2', timeout: 50000 });
+  await sleep(2000);
 
-  // Detectar campo usuario
-  const selUser = ['input[name="usuario"]','input[name="user"]','input[name="username"]',
-    'input[name="login"]','input[name="cedula"]','input[id*="user"]','input[id*="usuario"]',
-    'input[type="text"]'];
-  const selPass = ['input[name="password"]','input[name="clave"]','input[id*="pass"]',
-    'input[id*="clave"]','input[type="password"]'];
+  const ti = await page.$$('input[type="text"]');
+  const pi = await page.$('input[type="password"]');
+  if (!ti.length || !pi) throw new Error('Formulario de login no encontrado en ASD Dusakawi');
 
-  let uField = null, pField = null;
-  for (const s of selUser) { try { uField = await page.$(s); if (uField) break; } catch(e){} }
-  for (const s of selPass) { try { pField = await page.$(s); if (pField) break; } catch(e){} }
+  // ti[0]=Usuario, ti[1]=Año Trabajo, pi=Clave
+  await ti[0].click({ clickCount: 3 });
+  await ti[0].type(DUSAKAWI_USER, { delay: 40 });
+  await pi.click({ clickCount: 3 });
+  await pi.type(DUSAKAWI_PASS, { delay: 40 });
+  await ti[1].click({ clickCount: 3 });
+  await ti[1].type(ANNO_TRABAJO, { delay: 40 });
 
-  if (!uField || !pField) throw new Error('No se encontró el formulario de login en Dusakawi');
-
-  await uField.click({ clickCount: 3 }); await uField.type(DUSAKAWI_USER, { delay: 40 });
-  await pField.click({ clickCount: 3 }); await pField.type(DUSAKAWI_PASS, { delay: 40 });
-
-  // Botón submit
-  const selBtn = ['button[type="submit"]','input[type="submit"]','.btn-login','#btnLogin'];
-  let btn = null;
-  for (const s of selBtn) { try { btn = await page.$(s); if (btn) break; } catch(e){} }
-  if (btn) await btn.click(); else await pField.press('Enter');
-
+  await (await page.$('button[type="submit"]')).click();
   await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-  await page.waitForTimeout(2000);
+  await sleep(2000);
 
-  const html = await page.content();
-  if (html.toLowerCase().includes('contraseña incorrecta') || html.toLowerCase().includes('credenciales inv')) {
-    throw new Error('Credenciales incorrectas en Dusakawi EPSI');
+  if (page.url().includes('loginIps') || page.url().includes('login')) {
+    throw new Error('Login fallido en Dusakawi EPSI — verifica credenciales');
   }
-  console.log('✅ Login Dusakawi exitoso');
+  console.log('✅ Login OK:', page.url());
 }
 
 // ──────────────────────────────────────────────
-// NAVEGAR A CONSULTA RECEPCIÓN
+// BUSCAR EN CONSULTA RECEPCIÓN
 // ──────────────────────────────────────────────
 
-async function irAConsultaRecepcion(page) {
-  // Buscar menú "Gestión de Cuentas Médicas" o "Cuentas Médicas"
-  const menuKeywords = ['cuentas médicas','cuentas medicas','gestión de cuentas','gestion de cuentas'];
-  for (const kw of menuKeywords) {
-    try {
-      const els = await page.$x(`//*[contains(translate(normalize-space(.),'ÁÉÍÓÚÑ','aeioun'),'${kw.normalize('NFD').replace(/[\u0300-\u036f]/g,'')}')]`);
-      if (els.length > 0) {
-        await els[0].click();
-        await page.waitForTimeout(1500);
-        break;
-      }
-    } catch(e){}
+async function buscarEnConsultaRecepcion(page, { contrato, regimen, estado = '5' } = {}) {
+  await page.goto(CONSULTA_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+  await sleep(2000);
+
+  // Número de contrato
+  if (contrato) {
+    await page.$eval('#txtNumeroContratoC', (el, v) => { el.value = ''; }, '');
+    await page.type('#txtNumeroContratoC', contrato, { delay: 40 });
   }
 
-  // Buscar "Consulta Recepción"
-  const subKeywords = ['consulta recepción','consulta recepcion','recepción','recepcion'];
-  for (const kw of subKeywords) {
-    try {
-      const els = await page.$x(`//*[contains(translate(normalize-space(.),'ÁÉÍÓÚÑ','aeioun'),'${kw.normalize('NFD').replace(/[\u0300-\u036f]/g,'')}')]`);
-      if (els.length > 0) {
-        await els[0].click();
-        await page.waitForTimeout(2000);
-        return true;
-      }
-    } catch(e){}
-  }
-  throw new Error('No se encontró el menú "Consulta Recepción" en Dusakawi');
-}
-
-// ──────────────────────────────────────────────
-// BUSCAR UN CONTRATO
-// ──────────────────────────────────────────────
-
-async function buscarContrato(page, contrato, regimen) {
-  // regimen: 'RS' | 'RC' | null
-  // Limpiar formulario
-  try {
-    const btnLimpiar = await page.$x('//*[contains(text(),"Limpiar")]');
-    if (btnLimpiar.length > 0) { await btnLimpiar[0].click(); await page.waitForTimeout(800); }
-  } catch(e) {}
-
-  // Campo Número Contrato Prestador
-  const selContrato = [
-    'input[placeholder*="Contrato"]', 'input[name*="contrato"]', 'input[name*="numContrato"]',
-    'input[name*="numeroContrato"]', 'input[id*="contrato"]',
-  ];
-  let campoContrato = null;
-  for (const s of selContrato) {
-    try { campoContrato = await page.$(s); if (campoContrato) break; } catch(e){}
+  // Estado = Radicado (valor 5) — o el que se pida
+  if (estado) {
+    await page.select('#j_idt123_input', estado);
+    await sleep(300);
   }
 
-  // Si no encontramos por selector, buscar por posición en la fila del formulario
-  if (!campoContrato) {
-    // El formulario tiene varios inputs de texto — el de contrato es el 3ro según la pantalla
-    const allInputs = await page.$$('input[type="text"], input:not([type])');
-    // buscar el que tenga placeholder "Número Contrato Prestador" o similar
-    for (const inp of allInputs) {
-      const ph = await inp.evaluate(el => (el.placeholder || '').toLowerCase());
-      if (ph.includes('contrato')) { campoContrato = inp; break; }
-    }
-    if (!campoContrato && allInputs.length >= 3) campoContrato = allInputs[2]; // 3er input = contrato
-  }
-
-  if (campoContrato) {
-    await campoContrato.click({ clickCount: 3 });
-    await campoContrato.type(contrato, { delay: 40 });
-  }
-
-  // Estado = Radicado (dropdown)
-  try {
-    const selEstado = ['select[name*="estado"]','select[id*="estado"]','select'];
-    for (const s of selEstado) {
-      const dropdowns = await page.$$(s);
-      for (const dd of dropdowns) {
-        const opts = await dd.$$eval('option', els => els.map(o => o.text.trim().toLowerCase()));
-        if (opts.some(o => o.includes('radicado'))) {
-          await dd.select(await dd.$eval('option', (_, els) => {
-            for (const o of els) { if (o.text.trim().toLowerCase().includes('radicado')) return o.value; }
-            return '';
-          }));
-          // Usar page.select que es más confiable
-          const val = await dd.$$eval('option', opts => {
-            const found = opts.find(o => o.text.trim().toLowerCase().includes('radicado'));
-            return found ? found.value : null;
-          });
-          if (val) await page.select(`select`, val).catch(()=>{});
-          break;
-        }
-      }
-    }
-  } catch(e) {}
-
-  // Tipo Régimen
+  // Régimen RS=99, RC=1
   if (regimen) {
-    try {
-      const selRegs = await page.$$('select');
-      for (const sel of selRegs) {
-        const opts = await sel.$$eval('option', els => els.map(o => ({ v: o.value, t: o.text.trim() })));
-        const target = opts.find(o => o.t.toUpperCase() === regimen.toUpperCase() || o.v.toUpperCase() === regimen.toUpperCase());
-        if (target) {
-          await sel.select(target.v);
-          await page.waitForTimeout(500);
-          break;
-        }
-      }
-    } catch(e){}
+    const valorReg = regimen === 'RS' ? '99' : regimen === 'RC' ? '1' : null;
+    if (valorReg) {
+      await page.select('#j_idt138_input', valorReg);
+      await sleep(300);
+    }
   }
 
-  // Click Buscar / Consultar / Enter
-  const btnKeywords = ['buscar','consultar','filtrar','search'];
-  let clicked = false;
-  for (const kw of btnKeywords) {
-    try {
-      const btns = await page.$x(`//button[contains(translate(normalize-space(.),'ÁÉÍÓÚ','aeiou'),'${kw}')] | //input[@type='submit' and contains(translate(@value,'ÁÉÍÓÚ','aeiou'),'${kw}')]`);
-      if (btns.length > 0) { await btns[0].click(); clicked = true; break; }
-    } catch(e){}
-  }
-  if (!clicked && campoContrato) await campoContrato.press('Enter');
+  // Cantidad = 50 (máximo por página)
+  try {
+    const cantInput = await page.$('#j_idt129');
+    if (cantInput) { await cantInput.click({ clickCount: 3 }); await cantInput.type('50', { delay: 30 }); }
+  } catch(e) {}
 
-  await page.waitForTimeout(3000);
+  // Botón buscar — buscar button dentro del formulario
+  const clicked = await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+    const btn = btns.find(b => /buscar|consultar|filtrar|search/i.test(b.innerText || b.value || ''));
+    if (btn) { btn.click(); return true; }
+    // Buscar el primer botón con ícono de búsqueda
+    const anyBtn = btns.find(b => b.type === 'submit' || b.className.includes('search') || b.className.includes('buscar'));
+    if (anyBtn) { anyBtn.click(); return true; }
+    return false;
+  });
+  if (!clicked) {
+    // Fallback: submit con Enter en campo contrato
+    await page.focus('#txtNumeroContratoC');
+    await page.keyboard.press('Enter');
+  }
+
+  await sleep(3000);
 }
 
 // ──────────────────────────────────────────────
@@ -264,64 +171,104 @@ async function buscarContrato(page, contrato, regimen) {
 
 async function extraerFilas(page) {
   return page.evaluate(() => {
-    const filas = [];
     const tabla = document.querySelector('table');
-    if (!tabla) return filas;
-
-    const headers = Array.from(tabla.querySelectorAll('thead tr th, tr:first-child th'))
-      .map(th => th.innerText.trim());
-
+    if (!tabla) return [];
+    const headerEls = tabla.querySelectorAll('thead th, tr:first-child th');
+    const headers = Array.from(headerEls).map(th => th.innerText.trim());
     const rows = tabla.querySelectorAll('tbody tr');
-    rows.forEach(tr => {
+    return Array.from(rows).map(tr => {
       const celdas = Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim());
-      if (celdas.length > 0 && celdas.some(c => c !== '')) {
-        const obj = {};
-        headers.forEach((h, i) => { if (h) obj[h] = celdas[i] || ''; });
-        obj._raw = celdas;
-        filas.push(obj);
-      }
-    });
-    return filas;
+      if (!celdas.some(c => c)) return null;
+      const obj = { _raw: celdas };
+      headers.forEach((h, i) => { if (h) obj[h] = celdas[i] || ''; });
+      return obj;
+    }).filter(Boolean);
   });
 }
 
 // ──────────────────────────────────────────────
-// CONSULTAR UN CONTRATO ESPECÍFICO
+// CONSULTA INDIVIDUAL (un contrato)
 // ──────────────────────────────────────────────
 
-async function consultarUnoContrato(contrato, regimen = null) {
+async function consultarEstadoRadicacion({ prestador = '', contrato = '', vigencia = 2025, regimen = null } = {}) {
+  const termino = contrato || prestador;
+  console.log(`🌐 Consultando Dusakawi: "${termino}" | vigencia ${vigencia}`);
+
+  if (!termino) return { texto: '⚠️ Indica un número de contrato o nombre para consultar.' };
+
   const browser = await abrirBrowser();
   const page = await browser.newPage();
   try {
     await login(page);
-    await irAConsultaRecepcion(page);
-    await buscarContrato(page, contrato, regimen);
+    const regStr = regimen === 'sub' ? 'RS' : regimen === 'con' ? 'RC' : null;
+    await buscarEnConsultaRecepcion(page, { contrato: termino, regimen: regStr });
     const filas = await extraerFilas(page);
-    return filas;
+
+    if (filas.length === 0) {
+      return { texto: `⚠️ No se encontraron radicaciones para *${termino}* en Dusakawi.\n_(Estado: Radicado${regStr ? ` | Régimen: ${regStr}` : ''})_` };
+    }
+
+    // Analizar trimestres por fecha de recepción
+    const trimestreSet = new Set();
+    for (const f of filas) {
+      const fecha = f['Fecha Recepción'] || f['Fecha'] || f._raw?.[4] || '';
+      const t = fechaATrimestre(fecha, vigencia);
+      if (t) trimestreSet.add(t);
+    }
+    const radicados = [...trimestreSet].sort();
+    const todos = (TRIMESTRES[vigencia] || TRIMESTRES[2025]).map(t => t.nombre);
+    const pendientes = todos.filter(t => !radicados.includes(t));
+
+    let txt = `🌐 *RADICACIÓN — ${termino}*\n`;
+    txt += `Vigencia ${vigencia} | Total registros: *${filas.length}*\n`;
+    if (regStr) txt += `Régimen: *${regStr}*\n`;
+    txt += `━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    txt += `✅ *Trimestres radicados:*\n${radicados.length > 0 ? radicados.map(t => `  • ${t}`).join('\n') : '  Ninguno'}\n\n`;
+    txt += `❌ *Trimestres pendientes:*\n${pendientes.length > 0 ? pendientes.map(t => `  • ${t}`).join('\n') : '  ¡Al día!'}\n\n`;
+
+    txt += `📋 *Últimas radicaciones:*\n`;
+    filas.slice(0, 15).forEach((f, i) => {
+      const fecha  = f['Fecha Recepción'] || f._raw?.[4] || '';
+      const ips    = (f['IPS'] || f._raw?.[3] || '').split('\n')[0];
+      const nRad   = f['Número Radicación'] || f._raw?.[10] || '';
+      const valor  = f['Valor AF'] || f._raw?.[7] || '';
+      const estado = f['Estado'] || f._raw?.[9] || '';
+      const trim   = fechaATrimestre(fecha, vigencia);
+      txt += `*${i+1}.* 📅 ${fecha}${trim ? ` _(${trim})_` : ''}\n`;
+      if (ips)    txt += `   🏥 ${ips}\n`;
+      if (nRad)   txt += `   🔖 Rad: ${nRad}\n`;
+      if (valor)  txt += `   💰 ${valor}\n`;
+      if (estado) txt += `   📌 ${estado}\n`;
+    });
+    if (filas.length > 15) txt += `\n_...y ${filas.length - 15} más._\n`;
+
+    return { texto: txt };
+  } catch(e) {
+    console.error('❌ Error Dusakawi:', e.message);
+    return { texto: `❌ Error consultando Dusakawi EPSI:\n${e.message}` };
   } finally {
     await browser.close();
   }
 }
 
 // ──────────────────────────────────────────────
-// REPORTE: QUIÉNES RADICARON POR TRIMESTRE
+// REPORTE MASIVO (todos los contratos)
 // ──────────────────────────────────────────────
 
-async function reporteRadicacion({ vigencia = 2025, trimestre = null, regimen = null } = {}) {
-  console.log(`🌐 Iniciando consulta masiva Dusakawi — vigencia ${vigencia}...`);
+async function reporteMasivoRadicacion({ vigencia = 2025, trimestre = null, regimen = null } = {}) {
+  console.log(`🌐 Reporte masivo radicación Dusakawi — vigencia ${vigencia}${trimestre ? ' | '+trimestre : ''}`);
 
-  // Obtener contratos del reporte de evaluaciones
   let contratos = [];
   try {
     const datos = await evaluaciones.obtenerDatos(vigencia);
-    contratos = datos.map(p => ({ contrato: p.contrato, prestador: p.prestador, nit: p.nit }))
-      .filter(p => p.contrato && p.contrato.trim() !== '');
+    contratos = datos
+      .filter(p => p.contrato && p.contrato.trim() !== '')
+      .map(p => ({ contrato: p.contrato.trim(), prestador: p.prestador }));
   } catch(e) {
-    throw new Error(`No se pudieron obtener los contratos: ${e.message}`);
+    throw new Error(`No se pudieron obtener contratos de evaluaciones: ${e.message}`);
   }
-
-  if (contratos.length === 0) throw new Error('No hay contratos en la base de datos para esta vigencia');
-  console.log(`📋 ${contratos.length} contratos a consultar en Dusakawi`);
+  if (!contratos.length) throw new Error('No hay contratos para esta vigencia');
+  console.log(`📋 ${contratos.length} contratos a consultar`);
 
   const browser = await abrirBrowser();
   const page = await browser.newPage();
@@ -329,37 +276,25 @@ async function reporteRadicacion({ vigencia = 2025, trimestre = null, regimen = 
 
   try {
     await login(page);
-    await irAConsultaRecepcion(page);
+    const regStr = regimen === 'sub' ? 'RS' : regimen === 'con' ? 'RC' : null;
 
     for (let i = 0; i < contratos.length; i++) {
       const { contrato, prestador } = contratos[i];
-      console.log(`  [${i+1}/${contratos.length}] ${contrato} — ${prestador}`);
-
+      console.log(`  [${i+1}/${contratos.length}] ${contrato}`);
       try {
-        const regToQuery = regimen === 'sub' ? 'RS' : regimen === 'con' ? 'RC' : null;
-        await buscarContrato(page, contrato, regToQuery);
+        await buscarEnConsultaRecepcion(page, { contrato, regimen: regStr });
         const filas = await extraerFilas(page);
 
-        // Determinar trimestres radicados según fechas
         const trimestreSet = new Set();
-        for (const fila of filas) {
-          const fecha = fila['Fecha Recepción'] || fila['Fecha'] || fila._raw?.[4] || '';
-          if (fecha) {
-            const trim = fechaATrimestre(fecha, vigencia);
-            if (trim) trimestreSet.add(trim);
-          }
+        for (const f of filas) {
+          const fecha = f['Fecha Recepción'] || f['Fecha'] || f._raw?.[4] || '';
+          const t = fechaATrimestre(fecha, vigencia);
+          if (t) trimestreSet.add(t);
         }
-
-        resultados.push({
-          contrato,
-          prestador,
-          radicaciones: filas.length,
-          trimestresRadicados: [...trimestreSet].sort(),
-          filas,
-        });
+        resultados.push({ contrato, prestador, total: filas.length, trimestresRadicados: [...trimestreSet].sort() });
       } catch(e) {
-        console.error(`  ❌ Error ${contrato}:`, e.message);
-        resultados.push({ contrato, prestador, radicaciones: 0, trimestresRadicados: [], error: e.message });
+        console.error(`  ❌ ${contrato}:`, e.message);
+        resultados.push({ contrato, prestador, total: 0, trimestresRadicados: [], error: e.message });
       }
     }
   } finally {
@@ -367,129 +302,44 @@ async function reporteRadicacion({ vigencia = 2025, trimestre = null, regimen = 
   }
 
   // ── Formatear reporte ──
-  const trimestresVig = getTrimestres(vigencia).map(t => t.nombre);
-  const filtroTrim = trimestre; // null = todos
+  const todos = (TRIMESTRES[vigencia] || TRIMESTRES[2025]).map(t => t.nombre);
+
+  const radicados = resultados.filter(r =>
+    trimestre ? r.trimestresRadicados.includes(trimestre) : r.total > 0
+  );
+  const pendientes = resultados.filter(r =>
+    trimestre ? !r.trimestresRadicados.includes(trimestre) : r.total === 0
+  );
 
   let msg = `🌐 *RADICACIÓN DUSAKAWI EPSI — ${vigencia}*\n`;
-  if (regimen) msg += `Régimen: *${regimen === 'sub' ? 'Subsidiado (RS)' : 'Contributivo (RC)'}*\n`;
-  if (filtroTrim) msg += `Trimestre: *${filtroTrim}*\n`;
+  if (regimen) msg += `Régimen: *${regStr === 'RS' ? 'Subsidiado (RS)' : 'Contributivo (RC)'}*\n`;
+  if (trimestre) msg += `Trimestre: *${trimestre}*\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-  const radicados = resultados.filter(r => {
-    if (filtroTrim) return r.trimestresRadicados.includes(filtroTrim);
-    return r.radicaciones > 0;
-  });
-  const pendientes = resultados.filter(r => {
-    if (filtroTrim) return !r.trimestresRadicados.includes(filtroTrim);
-    return r.radicaciones === 0;
-  });
 
   msg += `✅ *RADICARON (${radicados.length}):*\n`;
   radicados.forEach((r, i) => {
-    const trims = filtroTrim ? filtroTrim : r.trimestresRadicados.join(', ');
+    const trims = trimestre || r.trimestresRadicados.join(', ') || '?';
     msg += `${i+1}. ${r.prestador}\n   📄 ${r.contrato} | ${trims}\n`;
   });
 
   msg += `\n❌ *PENDIENTES POR RADICAR (${pendientes.length}):*\n`;
   pendientes.forEach((r, i) => {
-    msg += `${i+1}. ${r.prestador}\n   📄 ${r.contrato}\n`;
-    if (r.trimestresRadicados.length > 0) msg += `   _(Tiene: ${r.trimestresRadicados.join(', ')})_\n`;
+    msg += `${i+1}. ${r.prestador} — ${r.contrato}\n`;
+    if (!trimestre && r.trimestresRadicados.length > 0)
+      msg += `   _(Tiene: ${r.trimestresRadicados.join(', ')})_\n`;
   });
 
   msg += `\n━━━━━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📊 Total: ${resultados.length} | ✅ ${radicados.length} | ❌ ${pendientes.length}\n`;
 
-  // Resumen por trimestre
   msg += `\n📅 *RESUMEN POR TRIMESTRE:*\n`;
-  for (const t of trimestresVig) {
-    const conTrim = resultados.filter(r => r.trimestresRadicados.includes(t)).length;
-    const sinTrim = resultados.length - conTrim;
-    msg += `  ${t}: ✅ ${conTrim} radicados | ❌ ${sinTrim} pendientes\n`;
+  for (const t of todos) {
+    const con    = resultados.filter(r => r.trimestresRadicados.includes(t)).length;
+    const sin    = resultados.length - con;
+    msg += `  ${t}: ✅ ${con} radicados | ❌ ${sin} pendientes\n`;
   }
 
   return msg;
-}
-
-// ──────────────────────────────────────────────
-// CONSULTA SIMPLE POR CONTRATO (para el bot)
-// ──────────────────────────────────────────────
-
-async function consultarEstadoRadicacion({ prestador = '', contrato = '', vigencia = 2025, regimen = null } = {}) {
-  console.log(`🌐 Consultando Dusakawi: ${contrato || prestador}`);
-
-  if (!contrato && !prestador) {
-    return { texto: '⚠️ Debes indicar un número de contrato o nombre de prestador para consultar.' };
-  }
-
-  const browser = await abrirBrowser();
-  const page = await browser.newPage();
-
-  try {
-    await login(page);
-    await irAConsultaRecepcion(page);
-
-    const regToQuery = regimen === 'sub' ? 'RS' : regimen === 'con' ? 'RC' : null;
-    const termino = contrato || prestador;
-    await buscarContrato(page, termino, regToQuery);
-    const filas = await extraerFilas(page);
-
-    if (filas.length === 0) {
-      return { texto: `⚠️ No se encontraron radicaciones para *${termino}* en Dusakawi EPSI.\n_(Estado: Radicado${regToQuery ? ` | Régimen: ${regToQuery}` : ''})_` };
-    }
-
-    // Analizar trimestres
-    const trimestreSet = new Set();
-    for (const fila of filas) {
-      const fecha = fila['Fecha Recepción'] || fila['Fecha'] || fila._raw?.[4] || '';
-      if (fecha) {
-        const trim = fechaATrimestre(fecha, vigencia);
-        if (trim) trimestreSet.add(trim);
-      }
-    }
-
-    const trimestresRadicados = [...trimestreSet].sort();
-    const todosTrims = getTrimestres(vigencia).map(t => t.nombre);
-    const trimsPendientes = todosTrims.filter(t => !trimestresRadicados.includes(t));
-
-    let txt = `🌐 *RADICACIÓN DUSAKAWI — ${termino}*\n`;
-    txt += `Vigencia: *${vigencia}*\n`;
-    if (regToQuery) txt += `Régimen: *${regToQuery}*\n`;
-    txt += `Total radicaciones: *${filas.length}*\n`;
-    txt += `━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-    txt += `✅ *Trimestres radicados:* ${trimestresRadicados.length > 0 ? trimestresRadicados.join(', ') : 'Ninguno'}\n`;
-    txt += `❌ *Trimestres pendientes:* ${trimsPendientes.length > 0 ? trimsPendientes.join(', ') : 'Ninguno — ¡Al día!'}\n\n`;
-
-    txt += `📋 *Detalle radicaciones:*\n`;
-    filas.slice(0, 15).forEach((f, i) => {
-      const fecha = f['Fecha Recepción'] || f._raw?.[4] || '';
-      const ips   = f['IPS'] || f._raw?.[3] || '';
-      const nRad  = f['Número Radicación'] || f._raw?.[10] || '';
-      const valor = f['Valor AF'] || f._raw?.[7] || '';
-      const estado= f['Estado'] || f._raw?.[9] || '';
-      txt += `${i+1}. 📅 ${fecha} | ${ips.split('\n')[0]}\n`;
-      if (nRad)  txt += `   🔖 Radicado: ${nRad}\n`;
-      if (valor) txt += `   💰 Valor: ${valor}\n`;
-      if (estado) txt += `   📌 Estado: ${estado}\n`;
-    });
-    if (filas.length > 15) txt += `\n_...y ${filas.length - 15} radicaciones más._\n`;
-
-    return { texto: txt };
-
-  } catch(e) {
-    console.error('❌ Error Dusakawi:', e.message);
-    return { texto: `❌ Error al consultar Dusakawi EPSI:\n${e.message}` };
-  } finally {
-    await browser.close();
-  }
-}
-
-// ──────────────────────────────────────────────
-// REPORTE MASIVO (quiénes radicaron / pendientes)
-// ──────────────────────────────────────────────
-
-async function reporteMasivoRadicacion({ vigencia = 2025, trimestre = null, regimen = null } = {}) {
-  return reporteRadicacion({ vigencia, trimestre, regimen });
 }
 
 module.exports = { consultarEstadoRadicacion, reporteMasivoRadicacion };
