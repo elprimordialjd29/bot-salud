@@ -27,7 +27,9 @@ const SHEETS = {
 
 function parseMonto(val) {
   if (!val || typeof val !== 'string') return 0;
-  const n = parseFloat(val.replace(/[\$,\s]/g, '').replace(/\./g, '').replace(',', '.'));
+  // Formato hoja: $ 48,921,502.40 (coma=miles, punto=decimal)
+  const cleaned = val.replace(/[\$\s]/g, '').replace(/,/g, '');
+  const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
 }
 
