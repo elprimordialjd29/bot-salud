@@ -97,15 +97,20 @@ function parse2023(rows) {
 }
 
 function parse2024(rows) {
-  // Header fila 2: Departamento, Municipio, NIT, Prestadores, Num contratos, Estado, Fecha Inicio, Fecha Final, Pb Sub, Pb Cont, Valor Percapita, Valor Contrato, Servicios, Parametrizados, SUB/CON x4 trimestres, OBSERVACIONES
   const data = [];
   for (let i = 3; i < rows.length; i++) {
     const r = rows[i];
     if (!r[3] || !r[2]) continue;
-    // Descuentos: columnas 14-21 (SUB+CON x4 trim)
-    const descSub = [r[14], r[16], r[18], r[20], r[22]].map(parseMonto).reduce((a, b) => a + b, 0);
-    const descCon = [r[15], r[17], r[19], r[21], r[23]].map(parseMonto).reduce((a, b) => a + b, 0);
     const obsCol = r.length > 24 ? r[24] : r[r.length - 1];
+    const trimestres = {
+      'I Trim':    { sub: parseMonto(r[14]), con: parseMonto(r[15]) },
+      'II Trim':   { sub: parseMonto(r[16]), con: parseMonto(r[17]) },
+      'III Trim':  { sub: parseMonto(r[18]), con: parseMonto(r[19]) },
+      'IV Trim':   { sub: parseMonto(r[20]), con: parseMonto(r[21]) },
+      'V Bimestre':{ sub: parseMonto(r[22]), con: parseMonto(r[23]) },
+    };
+    const descSub = Object.values(trimestres).reduce((a, t) => a + t.sub, 0);
+    const descCon = Object.values(trimestres).reduce((a, t) => a + t.con, 0);
     data.push({
       contrato: r[4]?.trim() || '',
       nit: r[2]?.trim() || '',
@@ -113,6 +118,7 @@ function parse2024(rows) {
       municipio: r[1]?.trim() || '',
       departamento: r[0]?.trim() || '',
       valorContrato: parseMonto(r[11]),
+      trimestres,
       descuentosSub: descSub,
       descuentosCon: descCon,
       descuentos: descSub + descCon,
@@ -124,14 +130,20 @@ function parse2024(rows) {
 }
 
 function parse2025(rows) {
-  // Header fila 2: nombre_municipio, nit, PRESTADORES, No contrato, fecha_inicio, fecha_terminacion, valor_percapita, valor_contrato, SUB/CON x5 periodos, OBSERVACIONES
   const data = [];
   for (let i = 3; i < rows.length; i++) {
     const r = rows[i];
     if (!r[2] || !r[1]) continue;
-    const descSub = [r[8], r[10], r[12], r[14], r[16]].map(parseMonto).reduce((a, b) => a + b, 0);
-    const descCon = [r[9], r[11], r[13], r[15], r[17]].map(parseMonto).reduce((a, b) => a + b, 0);
     const obsCol = r[18] || r[r.length - 1];
+    const trimestres = {
+      'I Trim (Ene-Feb-Mar)':   { sub: parseMonto(r[8]),  con: parseMonto(r[9])  },
+      'II Trim (Abr-May-Jun)':  { sub: parseMonto(r[10]), con: parseMonto(r[11]) },
+      'III Trim (Jul-Ago-Sep)': { sub: parseMonto(r[12]), con: parseMonto(r[13]) },
+      'IV Trim (Oct-Nov-Dic)':  { sub: parseMonto(r[14]), con: parseMonto(r[15]) },
+      'V Bimestre (Ene-Feb 26)':{ sub: parseMonto(r[16]), con: parseMonto(r[17]) },
+    };
+    const descSub = Object.values(trimestres).reduce((a, t) => a + t.sub, 0);
+    const descCon = Object.values(trimestres).reduce((a, t) => a + t.con, 0);
     data.push({
       contrato: r[3]?.trim() || '',
       nit: r[1]?.trim() || '',
@@ -139,6 +151,7 @@ function parse2025(rows) {
       municipio: r[0]?.trim() || '',
       departamento: '',
       valorContrato: parseMonto(r[7]),
+      trimestres,
       descuentosSub: descSub,
       descuentosCon: descCon,
       descuentos: descSub + descCon,
@@ -389,4 +402,107 @@ async function rankingDescuentos({ vigencia, orden = 'mayor', top = 10, trimestr
   return msg;
 }
 
-module.exports = { generarReporte, generarExcel, obtenerDatos, reporteComparativo, rankingDescuentos, SHEETS };
+// ──────────────────────────────────────────────
+// CONSULTA POR PRESTADOR O CONTRATO
+// ──────────────────────────────────────────────
+
+async function consultarPrestador(vigencia, busqueda, filtroTrimestre = null, filtroRegimen = null) {
+  const datos = await obtenerDatos(vigencia);
+  const b = busqueda.toLowerCase().trim();
+
+  // Buscar por nombre de prestador o número de contrato
+  const encontrados = datos.filter(d =>
+    d.prestador.toLowerCase().includes(b) ||
+    d.contrato.toLowerCase().includes(b) ||
+    d.nit.toLowerCase().includes(b)
+  );
+
+  if (!encontrados.length) {
+    return { texto: `❌ No encontré ningún prestador o contrato con "${busqueda}" en vigencia ${vigencia}.`, encontrados: [] };
+  }
+
+  let msg = `🔍 *CONSULTA VIGENCIA ${vigencia}*\n`;
+  msg += `Búsqueda: _${busqueda}_\n`;
+  msg += `Resultados: *${encontrados.length}*\n`;
+  msg += `─────────────────────────────\n`;
+
+  for (const d of encontrados) {
+    msg += `\n🏥 *${d.prestador}*\n`;
+    msg += `📄 Contrato: \`${d.contrato || 'N/A'}\`\n`;
+    msg += `🆔 NIT: ${d.nit}\n`;
+    msg += `📍 ${d.municipio}\n`;
+    if (d.valorContrato > 0) msg += `💵 Valor contrato: ${formatPesos(d.valorContrato)}\n`;
+    msg += `📊 Estado: *${d.estado}*\n`;
+    if (d.observacion) msg += `📝 Obs: _${d.observacion}_\n`;
+
+    if (d.trimestres) {
+      msg += `\n*Descuentos por período:*\n`;
+      for (const [periodo, val] of Object.entries(d.trimestres)) {
+        // Filtrar por trimestre si se especificó
+        if (filtroTrimestre && !periodo.toLowerCase().includes(filtroTrimestre.toLowerCase())) continue;
+
+        const mostrarSub = !filtroRegimen || filtroRegimen === 'sub';
+        const mostrarCon = !filtroRegimen || filtroRegimen === 'con';
+
+        const tieneDatos = val.sub > 0 || val.con > 0 ||
+          (d.observacion && d.observacion.toLowerCase().includes(periodo.split(' ')[0].toLowerCase()));
+
+        if (mostrarSub && val.sub > 0) msg += `  ${periodo}\n   • Subsidiado: ${formatPesos(val.sub)}\n`;
+        if (mostrarCon && val.con > 0) msg += `  ${periodo}\n   • Contributivo: ${formatPesos(val.con)}\n`;
+        if (val.sub === 0 && val.con === 0 && !filtroTrimestre) msg += `  ${periodo}: sin descuentos\n`;
+      }
+      const totalSub = Object.values(d.trimestres).reduce((a, t) => a + t.sub, 0);
+      const totalCon = Object.values(d.trimestres).reduce((a, t) => a + t.con, 0);
+      if (!filtroRegimen || filtroRegimen === 'sub') msg += `  💰 *Total Sub: ${formatPesos(totalSub)}*\n`;
+      if (!filtroRegimen || filtroRegimen === 'con') msg += `  💰 *Total Con: ${formatPesos(totalCon)}*\n`;
+    }
+    msg += `─────────────────────────────\n`;
+  }
+
+  return { texto: msg, encontrados };
+}
+
+async function generarExcelPrestador(vigencia, busqueda) {
+  const datos = await obtenerDatos(vigencia);
+  const b = busqueda.toLowerCase().trim();
+  const encontrados = datos.filter(d =>
+    d.prestador.toLowerCase().includes(b) ||
+    d.contrato.toLowerCase().includes(b) ||
+    d.nit.toLowerCase().includes(b)
+  );
+
+  if (!encontrados.length) return null;
+
+  const filas = [];
+  for (const d of encontrados) {
+    const base = {
+      'Prestador': d.prestador,
+      'NIT': d.nit,
+      'No. Contrato': d.contrato,
+      'Municipio': d.municipio,
+      'Valor Contrato': d.valorContrato || 0,
+      'Estado': d.estado,
+      'Observación': d.observacion,
+    };
+    if (d.trimestres) {
+      for (const [periodo, val] of Object.entries(d.trimestres)) {
+        base[`${periodo} - SUB`] = val.sub;
+        base[`${periodo} - CON`] = val.con;
+        base[`${periodo} - TOTAL`] = val.sub + val.con;
+      }
+    }
+    base['Total Subsidiado'] = d.descuentosSub || 0;
+    base['Total Contributivo'] = d.descuentosCon || 0;
+    base['Total Descuentos'] = d.descuentos || 0;
+    filas.push(base);
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(filas);
+  XLSX.utils.book_append_sheet(wb, ws, `Consulta ${vigencia}`);
+  const tmpPath = path.join(os.tmpdir(), `prestador_${vigencia}_${Date.now()}.xlsx`);
+  XLSX.writeFile(wb, tmpPath);
+  return tmpPath;
+}
+
+module.exports = { generarReporte, generarExcel, obtenerDatos, reporteComparativo, rankingDescuentos, consultarPrestador, generarExcelPrestador, SHEETS };

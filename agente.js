@@ -119,6 +119,40 @@ async function procesarMensaje(texto, esAdmin = true) {
     }
   }
 
+  // ── CONSULTA ESPECÍFICA DE PRESTADOR O CONTRATO ──
+  // Detecta número de contrato (ej: EB-44035-2026-03, 20001-064-PMT)
+  const matchContrato = tlFinal.match(/[a-z0-9]+-[a-z0-9]+-[a-z0-9]+(?:-[a-z0-9]+)*/i);
+  if (matchContrato) {
+    return {
+      tipo: 'consulta_prestador',
+      busqueda: matchContrato[0],
+      vigencia: vigencia || 2025,
+      excel: tlFinal.includes('excel') || tlFinal.includes('archivo'),
+      trimestre: detectarTrimestre(tlFinal),
+      regimen: tlFinal.includes('subsidiado') ? 'sub' : tlFinal.includes('contributivo') ? 'con' : null,
+    };
+  }
+
+  // Detecta "ver/buscar/consultar [nombre] [año]" o "[nombre] trimestre"
+  const palabrasConsulta = ['ver prestador', 'buscar prestador', 'consultar prestador', 'datos de', 'info de', 'información de'];
+  const tieneConsulta = palabrasConsulta.some(p => tlFinal.includes(p));
+  if (tieneConsulta && vigencia) {
+    // Extraer el nombre después de la palabra clave
+    let busqueda = tlFinal;
+    for (const p of palabrasConsulta) busqueda = busqueda.replace(p, '');
+    busqueda = busqueda.replace(/\b(2023|2024|2025|2026)\b/, '').replace(/excel|archivo|subsidiado|contributivo/, '').trim();
+    if (busqueda.length > 2) {
+      return {
+        tipo: 'consulta_prestador',
+        busqueda,
+        vigencia,
+        excel: tlFinal.includes('excel') || tlFinal.includes('archivo'),
+        trimestre: detectarTrimestre(tlFinal),
+        regimen: tlFinal.includes('subsidiado') ? 'sub' : tlFinal.includes('contributivo') ? 'con' : null,
+      };
+    }
+  }
+
   // ── CLAUDE (para preguntas generales) ──
   historial.push({ role: 'user', content: textoFinal });
   if (historial.length > 20) historial.splice(0, 2);

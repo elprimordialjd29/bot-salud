@@ -145,6 +145,31 @@ bot.on('message', async (msg) => {
       return;
     }
 
+    // ── CONSULTA PRESTADOR ──
+    if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'consulta_prestador') {
+      await bot.sendChatAction(chatId, 'typing');
+      try {
+        const resultado = await evaluaciones.consultarPrestador(
+          respuesta.vigencia, respuesta.busqueda, respuesta.trimestre, respuesta.regimen
+        );
+        await enviarMensaje(chatId, resultado.texto);
+        if (resultado.encontrados.length > 0) {
+          const excelPath = await evaluaciones.generarExcelPrestador(respuesta.vigencia, respuesta.busqueda);
+          if (excelPath) {
+            await bot.sendDocument(chatId, excelPath, {}, {
+              filename: `Consulta_${respuesta.busqueda}_${respuesta.vigencia}.xlsx`,
+              contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            });
+            try { fs.unlinkSync(excelPath); } catch(e) {}
+          }
+        }
+      } catch(e) {
+        console.error('❌ Error consulta prestador:', e.message);
+        await bot.sendMessage(chatId, `❌ Error al consultar: ${e.message}`);
+      }
+      return;
+    }
+
     if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'evaluacion_comparativo') {
       await bot.sendChatAction(chatId, 'typing');
       const reporte = await evaluaciones.reporteComparativo([2023, 2024, 2025]);
