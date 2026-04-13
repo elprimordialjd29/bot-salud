@@ -364,40 +364,151 @@ async function reportePendientesTodas() {
 }
 
 // ──────────────────────────────────────────────
-// GENERAR EXCEL
+// GENERAR EXCEL (con formato, colores y resumen)
 // ──────────────────────────────────────────────
+
+const ExcelJS = require('exceljs');
+
+const COLOR = {
+  EVALUADO:  { argb: 'FFD9EAD3' }, // verde claro
+  PARCIAL:   { argb: 'FFFFF2CC' }, // amarillo claro
+  PENDIENTE: { argb: 'FFFCE5CD' }, // naranja claro
+  HEADER:    { argb: 'FF1F4E79' }, // azul oscuro
+  HEADER_TXT:{ argb: 'FFFFFFFF' }, // blanco
+  TOTAL_BG:  { argb: 'FFD0E4F5' }, // azul claro
+};
+
+function aplicarEstilo(cell, estado) {
+  const bg = COLOR[estado] || { argb: 'FFFFFFFF' };
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: bg };
+}
 
 async function generarExcel(vigencia) {
   const datos = await obtenerDatos(vigencia);
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Bot Salud';
+  wb.created = new Date();
 
-  const filas = datos.map(d => ({
-    'No. Contrato': d.contrato,
-    'NIT': d.nit,
-    'Prestador': d.prestador,
-    'Municipio': d.municipio,
-    'Departamento': d.departamento,
-    'Valor Contrato': d.valorContrato || 0,
-    'Total Descuentos Sub': d.descuentosSub || d.descuentos || 0,
-    'Total Descuentos Con': d.descuentosCon || 0,
-    'Total Descuentos': d.descuentos,
-    'Estado': d.estado,
-    'Observación': d.observacion,
-  }));
+  // ── Hoja 1: Detalle completo ──
+  const ws = wb.addWorksheet(`Vigencia ${vigencia}`, { views: [{ state: 'frozen', ySplit: 1 }] });
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(filas);
-
-  // Ancho de columnas
-  ws['!cols'] = [
-    { wch: 18 }, { wch: 14 }, { wch: 45 }, { wch: 18 },
-    { wch: 15 }, { wch: 20 }, { wch: 22 }, { wch: 22 },
-    { wch: 20 }, { wch: 15 }, { wch: 50 },
+  const cols = [
+    { header: 'No. Contrato',       key: 'contrato',      width: 20 },
+    { header: 'NIT',                key: 'nit',           width: 16 },
+    { header: 'Prestador',          key: 'prestador',     width: 48 },
+    { header: 'Municipio',          key: 'municipio',     width: 20 },
+    { header: 'Valor Contrato',     key: 'valorContrato', width: 22, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'I Trim - Sub',       key: 'iTrimSub',      width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'I Trim - Con',       key: 'iTrimCon',      width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'II Trim - Sub',      key: 'iiTrimSub',     width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'II Trim - Con',      key: 'iiTrimCon',     width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'III Trim - Sub',     key: 'iiiTrimSub',    width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'III Trim - Con',     key: 'iiiTrimCon',    width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'IV Trim - Sub',      key: 'ivTrimSub',     width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'IV Trim - Con',      key: 'ivTrimCon',     width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'V Bimestre - Sub',   key: 'vBimSub',       width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'V Bimestre - Con',   key: 'vBimCon',       width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Total Sub',          key: 'totalSub',      width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Total Con',          key: 'totalCon',      width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Total Descuentos',   key: 'totalDesc',     width: 22, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Estado',             key: 'estado',        width: 14 },
+    { header: 'Observación',        key: 'observacion',   width: 55 },
   ];
+  ws.columns = cols;
 
-  XLSX.utils.book_append_sheet(wb, ws, `Vigencia ${vigencia}`);
+  // Estilo de encabezado
+  ws.getRow(1).eachCell(cell => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: COLOR.HEADER };
+    cell.font = { bold: true, color: { argb: COLOR.HEADER_TXT.argb }, size: 11 };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF000000' } } };
+  });
+  ws.getRow(1).height = 30;
+  ws.autoFilter = { from: 'A1', to: `T1` };
+
+  // Filas de datos
+  for (const d of datos) {
+    const t = d.trimestres || {};
+    const keys = Object.keys(t);
+    const row = ws.addRow({
+      contrato:     d.contrato,
+      nit:          d.nit,
+      prestador:    d.prestador,
+      municipio:    d.municipio,
+      valorContrato: d.valorContrato || 0,
+      iTrimSub:     t[keys[0]]?.sub || 0,
+      iTrimCon:     t[keys[0]]?.con || 0,
+      iiTrimSub:    t[keys[1]]?.sub || 0,
+      iiTrimCon:    t[keys[1]]?.con || 0,
+      iiiTrimSub:   t[keys[2]]?.sub || 0,
+      iiiTrimCon:   t[keys[2]]?.con || 0,
+      ivTrimSub:    t[keys[3]]?.sub || 0,
+      ivTrimCon:    t[keys[3]]?.con || 0,
+      vBimSub:      t[keys[4]]?.sub || 0,
+      vBimCon:      t[keys[4]]?.con || 0,
+      totalSub:     d.descuentosSub || 0,
+      totalCon:     d.descuentosCon || 0,
+      totalDesc:    d.descuentos || 0,
+      estado:       d.estado,
+      observacion:  d.observacion,
+    });
+
+    // Color por estado
+    row.eachCell(cell => aplicarEstilo(cell, d.estado));
+    // Negrita en nombre prestador
+    row.getCell('prestador').font = { bold: true };
+    // Negrita en totales
+    row.getCell('totalDesc').font = { bold: true };
+    row.alignment = { vertical: 'middle' };
+  }
+
+  // Fila de totales
+  const lastRow = ws.lastRow.number + 1;
+  const totRow = ws.addRow({
+    contrato:  'TOTAL',
+    valorContrato: datos.reduce((s, d) => s + (d.valorContrato || 0), 0),
+    totalSub:  datos.reduce((s, d) => s + (d.descuentosSub || 0), 0),
+    totalCon:  datos.reduce((s, d) => s + (d.descuentosCon || 0), 0),
+    totalDesc: datos.reduce((s, d) => s + (d.descuentos || 0), 0),
+  });
+  totRow.eachCell(cell => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: COLOR.TOTAL_BG };
+    cell.font = { bold: true };
+  });
+
+  // ── Hoja 2: Resumen ──
+  const wsRes = wb.addWorksheet('Resumen');
+  wsRes.columns = [
+    { header: 'Indicador', key: 'ind', width: 35 },
+    { header: 'Valor',     key: 'val', width: 20 },
+  ];
+  wsRes.getRow(1).eachCell(cell => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: COLOR.HEADER };
+    cell.font = { bold: true, color: { argb: COLOR.HEADER_TXT.argb } };
+  });
+
+  const evaluados  = datos.filter(d => d.estado === 'EVALUADO');
+  const parciales  = datos.filter(d => d.estado === 'PARCIAL');
+  const pendientes = datos.filter(d => d.estado === 'PENDIENTE');
+  const total = datos.length;
+
+  const resumen = [
+    ['Vigencia', vigencia],
+    ['Total contratos', total],
+    ['Evaluados', `${evaluados.length} (${((evaluados.length/total)*100).toFixed(1)}%)`],
+    ['Parcialmente evaluados', `${parciales.length} (${((parciales.length/total)*100).toFixed(1)}%)`],
+    ['Pendientes', `${pendientes.length} (${((pendientes.length/total)*100).toFixed(1)}%)`],
+    ['Total descuentos Sub', datos.reduce((s, d) => s + (d.descuentosSub || 0), 0)],
+    ['Total descuentos Con', datos.reduce((s, d) => s + (d.descuentosCon || 0), 0)],
+    ['Total descuentos',     datos.reduce((s, d) => s + (d.descuentos || 0), 0)],
+  ];
+  for (const [ind, val] of resumen) {
+    const r = wsRes.addRow({ ind, val });
+    if (typeof val === 'number') r.getCell('val').numFmt = '"$"#,##0.00';
+  }
 
   const tmpPath = path.join(os.tmpdir(), `evaluaciones_${vigencia}_${Date.now()}.xlsx`);
-  XLSX.writeFile(wb, tmpPath);
+  await wb.xlsx.writeFile(tmpPath);
   return tmpPath;
 }
 
@@ -595,35 +706,62 @@ async function generarExcelPrestador(vigencia, busqueda) {
 
   if (!encontrados.length) return null;
 
-  const filas = [];
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Bot Salud';
+  const ws = wb.addWorksheet(`${busqueda} ${vigencia}`, { views: [{ state: 'frozen', ySplit: 1 }] });
+
+  ws.columns = [
+    { header: 'No. Contrato',     key: 'contrato',    width: 22 },
+    { header: 'NIT',              key: 'nit',         width: 16 },
+    { header: 'Prestador',        key: 'prestador',   width: 48 },
+    { header: 'Municipio',        key: 'municipio',   width: 20 },
+    { header: 'Valor Contrato',   key: 'valorContrato', width: 22, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'I Trim - Sub',     key: 'it_s',  width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'I Trim - Con',     key: 'it_c',  width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'II Trim - Sub',    key: 'iit_s', width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'II Trim - Con',    key: 'iit_c', width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'III Trim - Sub',   key: 'iiit_s',width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'III Trim - Con',   key: 'iiit_c',width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'IV Trim - Sub',    key: 'ivt_s', width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'IV Trim - Con',    key: 'ivt_c', width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'V Bim - Sub',      key: 'vb_s',  width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'V Bim - Con',      key: 'vb_c',  width: 18, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Total Sub',        key: 'totalSub',  width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Total Con',        key: 'totalCon',  width: 20, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Total Descuentos', key: 'totalDesc', width: 22, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Estado',           key: 'estado',    width: 14 },
+    { header: 'Observación',      key: 'observacion', width: 55 },
+  ];
+
+  ws.getRow(1).eachCell(cell => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: COLOR.HEADER };
+    cell.font = { bold: true, color: { argb: COLOR.HEADER_TXT.argb }, size: 11 };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  });
+  ws.getRow(1).height = 28;
+  ws.autoFilter = { from: 'A1', to: 'T1' };
+
   for (const d of encontrados) {
-    const base = {
-      'Prestador': d.prestador,
-      'NIT': d.nit,
-      'No. Contrato': d.contrato,
-      'Municipio': d.municipio,
-      'Valor Contrato': d.valorContrato || 0,
-      'Estado': d.estado,
-      'Observación': d.observacion,
-    };
-    if (d.trimestres) {
-      for (const [periodo, val] of Object.entries(d.trimestres)) {
-        base[`${periodo} - SUB`] = val.sub;
-        base[`${periodo} - CON`] = val.con;
-        base[`${periodo} - TOTAL`] = val.sub + val.con;
-      }
-    }
-    base['Total Subsidiado'] = d.descuentosSub || 0;
-    base['Total Contributivo'] = d.descuentosCon || 0;
-    base['Total Descuentos'] = d.descuentos || 0;
-    filas.push(base);
+    const t = d.trimestres || {};
+    const keys = Object.keys(t);
+    const row = ws.addRow({
+      contrato: d.contrato, nit: d.nit, prestador: d.prestador, municipio: d.municipio,
+      valorContrato: d.valorContrato || 0,
+      it_s: t[keys[0]]?.sub||0, it_c: t[keys[0]]?.con||0,
+      iit_s: t[keys[1]]?.sub||0, iit_c: t[keys[1]]?.con||0,
+      iiit_s: t[keys[2]]?.sub||0, iiit_c: t[keys[2]]?.con||0,
+      ivt_s: t[keys[3]]?.sub||0, ivt_c: t[keys[3]]?.con||0,
+      vb_s: t[keys[4]]?.sub||0, vb_c: t[keys[4]]?.con||0,
+      totalSub: d.descuentosSub||0, totalCon: d.descuentosCon||0, totalDesc: d.descuentos||0,
+      estado: d.estado, observacion: d.observacion,
+    });
+    row.eachCell(cell => aplicarEstilo(cell, d.estado));
+    row.getCell('prestador').font = { bold: true };
+    row.getCell('totalDesc').font = { bold: true };
   }
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(filas);
-  XLSX.utils.book_append_sheet(wb, ws, `Consulta ${vigencia}`);
   const tmpPath = path.join(os.tmpdir(), `prestador_${vigencia}_${Date.now()}.xlsx`);
-  XLSX.writeFile(wb, tmpPath);
+  await wb.xlsx.writeFile(tmpPath);
   return tmpPath;
 }
 
