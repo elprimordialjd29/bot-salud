@@ -246,18 +246,16 @@ async function generarReporte(vigencia) {
 
       if (listaSub.length > 0) {
         msg += `│ 🔵 *Subsidiado:*\n`;
-        listaSub.slice(0, 10).forEach(({ n, v }, i) => {
+        listaSub.forEach(({ n, v }, i) => {
           msg += `│  ${i + 1}. ${n}\n│     ${formatPesos(v)}\n`;
         });
-        if (listaSub.length > 10) msg += `│  _...y ${listaSub.length - 10} más_\n`;
         msg += `│  ➤ *Total Sub: ${formatPesos(totalSub)}*\n`;
       }
       if (listaCon.length > 0) {
         msg += `│ 🟢 *Contributivo:*\n`;
-        listaCon.slice(0, 10).forEach(({ n, v }, i) => {
+        listaCon.forEach(({ n, v }, i) => {
           msg += `│  ${i + 1}. ${n}\n│     ${formatPesos(v)}\n`;
         });
-        if (listaCon.length > 10) msg += `│  _...y ${listaCon.length - 10} más_\n`;
         msg += `│  ➤ *Total Con: ${formatPesos(totalCon)}*\n`;
       }
       msg += `└─ 💰 *TOTAL: ${formatPesos(totalSub + totalCon)}*\n`;
