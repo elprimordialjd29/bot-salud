@@ -27,20 +27,34 @@ No respondas preguntas de normatividad ni resoluciones de salud. Solo te ocupas 
 function mensajeBienvenida() {
   return `👋 *¡Hola! Soy tu asistente en salud. ¿En qué te puedo ayudar?*
 
-Escríbeme tu pregunta 💬`;
+Escribe *menú* para ver todas las opciones disponibles 📋`;
 }
 
 function mensajeMenu() {
-  return `📋 *MENÚ — Bot Evaluaciones*
+  return `📋 *MENÚ — Bot Evaluaciones y Contratos*
 
+*📊 Reportes generales:*
 1️⃣ Reporte evaluaciones 2023
 2️⃣ Reporte evaluaciones 2024
 3️⃣ Reporte evaluaciones 2025
 4️⃣ Comparativo todas las vigencias
-5️⃣ Prestador con más descuento
-6️⃣ Prestador con menos descuento
 
-O escribe tu pregunta directamente 💬`;
+*📈 Rankings de descuentos:*
+5️⃣ Prestador con más descuento 2025
+6️⃣ Prestador con menos descuento 2025
+7️⃣ Ranking 2025 por trimestre 1
+8️⃣ Ranking 2025 por trimestre 2
+
+*🔍 Consulta por prestador o contrato:*
+Escribe el *nombre del prestador* o el *número de contrato* directamente.
+
+_Ejemplos:_
+• \`DUSAKAWI\`
+• \`20001-064-PMT\`
+• \`KANKUAMA subsidiado\`
+• \`ver prestador DUSAKAWI 2024\`
+
+Escríbeme tu pregunta 💬`;
 }
 
 const MENU_ACCIONES = {
@@ -50,6 +64,8 @@ const MENU_ACCIONES = {
   '4': 'comparar evaluaciones todas las vigencias',
   '5': 'prestador con más descuento 2025',
   '6': 'prestador con menos descuento 2025',
+  '7': 'prestador con más descuento 2025 trimestre 1',
+  '8': 'prestador con más descuento 2025 trimestre 2',
 };
 
 // ──────────────────────────────────────────────
