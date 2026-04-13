@@ -15,6 +15,7 @@ const agente = require('./agente');
 const reportes = require('./reportes');
 const db = require('./database');
 const evaluaciones = require('./evaluaciones');
+const dusakawi = require('./dusakawi');
 const fs = require('fs');
 
 // ──────────────────────────────────────────────
@@ -196,6 +197,29 @@ bot.on('message', async (msg) => {
       } catch(e) {
         console.error('❌ Error consulta prestador:', e.message);
         await bot.sendMessage(chatId, `❌ Error al consultar: ${e.message}`);
+      }
+      return;
+    }
+
+    // ── DUSAKAWI RADICACIÓN ──
+    if (respuesta && typeof respuesta === 'object' && respuesta.tipo === 'dusakawi') {
+      await bot.sendChatAction(chatId, 'typing');
+      await bot.sendMessage(chatId, `🌐 Consultando sistema Dusakawi EPSI...\n_Esto puede tardar unos segundos._`, { parse_mode: 'Markdown' });
+      try {
+        const resultado = await dusakawi.consultarEstadoRadicacion({
+          prestador: respuesta.busqueda,
+        });
+        // Enviar screenshots si existen (para debug / confirmación visual)
+        for (const sc of resultado.screenshots || []) {
+          try {
+            await bot.sendPhoto(chatId, sc);
+            try { fs.unlinkSync(sc); } catch(e) {}
+          } catch(e) {}
+        }
+        await enviarMensaje(chatId, resultado.texto);
+      } catch(e) {
+        console.error('❌ Error Dusakawi:', e.message);
+        await bot.sendMessage(chatId, `❌ Error al consultar Dusakawi: ${e.message}`);
       }
       return;
     }

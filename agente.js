@@ -55,6 +55,10 @@ function mensajeMenu() {
 Escribe el nombre o número de contrato directamente.
 _Ejemplo: \`DUSAKAWI\` o \`20001-064-PMT\`_
 
+*🌐 Radicación Dusakawi EPSI:*
+Escribe: _radicación [nombre prestador]_
+_Ejemplo: \`radicación WINTUKWA\`_
+
 Escríbeme tu pregunta 💬`;
 }
 
@@ -160,6 +164,17 @@ async function procesarMensaje(texto, esAdmin = true) {
     if (tieneEval || tieneReporte) {
       return { tipo: 'evaluacion_comparativo' };
     }
+  }
+
+  // ── CONSULTA RADICACIÓN DUSAKAWI ──
+  const esRadicacion = /radic|dusakawi|recepci[oó]n cuentas|estado cuenta|cuentas m[eé]dicas|consulta recepci/.test(tlFinal);
+  if (esRadicacion) {
+    let busqueda = tlFinal;
+    for (const kw of ['consultar','ver','buscar','estado','radicacion','radicación','dusakawi','recepcion','recepción','cuentas','médicas','medicas','de','la','el','prestador']) {
+      busqueda = busqueda.replace(new RegExp(`\\b${kw}\\b`, 'g'), '');
+    }
+    busqueda = busqueda.replace(/\b(2023|2024|2025|2026)\b/, '').trim();
+    return { tipo: 'dusakawi', busqueda: busqueda || '', vigencia };
   }
 
   // ── CONSULTA ESPECÍFICA DE PRESTADOR O CONTRATO ──
