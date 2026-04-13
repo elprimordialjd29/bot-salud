@@ -211,26 +211,47 @@ async function generarReporte(vigencia) {
   msg += `⚠️ Parcialmente evaluados: *${parciales.length}* (${pParc}%)\n`;
   msg += `❌ Pendientes: *${pendientes.length}* (${pPend}%)\n\n`;
 
-  // ── Totales por trimestre y régimen ──
+  // ── Descuentos por trimestre → prestador → régimen ──
   const periodos = {};
   for (const d of datos) {
     if (!d.trimestres) continue;
     for (const [periodo, val] of Object.entries(d.trimestres)) {
-      if (!periodos[periodo]) periodos[periodo] = { sub: 0, con: 0 };
-      periodos[periodo].sub += val.sub;
-      periodos[periodo].con += val.con;
+      if (!periodos[periodo]) periodos[periodo] = {};
+      if (!periodos[periodo][d.prestador]) periodos[periodo][d.prestador] = { sub: 0, con: 0 };
+      periodos[periodo][d.prestador].sub += val.sub;
+      periodos[periodo][d.prestador].con += val.con;
     }
   }
+
   if (Object.keys(periodos).length > 0) {
     msg += `📅 *DESCUENTOS POR TRIMESTRE Y RÉGIMEN:*\n`;
     let num = 1;
-    for (const [periodo, val] of Object.entries(periodos)) {
-      const total = val.sub + val.con;
-      if (total === 0) continue;
+    for (const [periodo, prestadores] of Object.entries(periodos)) {
+      const listaSub = Object.entries(prestadores)
+        .map(([n, v]) => ({ n, v: v.sub }))
+        .filter(x => x.v > 0)
+        .sort((a, b) => b.v - a.v);
+      const listaCon = Object.entries(prestadores)
+        .map(([n, v]) => ({ n, v: v.con }))
+        .filter(x => x.v > 0)
+        .sort((a, b) => b.v - a.v);
+      const totalSub = listaSub.reduce((s, x) => s + x.v, 0);
+      const totalCon = listaCon.reduce((s, x) => s + x.v, 0);
+      if (totalSub + totalCon === 0) continue;
+
       msg += `\n*${num}. ${periodo}*\n`;
-      if (val.sub > 0) msg += `   • Subsidiado:    ${formatPesos(val.sub)}\n`;
-      if (val.con > 0) msg += `   • Contributivo:  ${formatPesos(val.con)}\n`;
-      msg += `   • Total:         ${formatPesos(total)}\n`;
+
+      if (listaSub.length > 0) {
+        msg += `  _Subsidiado:_\n`;
+        listaSub.forEach(({ n, v }) => { msg += `  • ${n}: ${formatPesos(v)}\n`; });
+        msg += `  *Total Sub: ${formatPesos(totalSub)}*\n`;
+      }
+      if (listaCon.length > 0) {
+        msg += `  _Contributivo:_\n`;
+        listaCon.forEach(({ n, v }) => { msg += `  • ${n}: ${formatPesos(v)}\n`; });
+        msg += `  *Total Con: ${formatPesos(totalCon)}*\n`;
+      }
+      msg += `  *Total: ${formatPesos(totalSub + totalCon)}*\n`;
       num++;
     }
     msg += '\n';
