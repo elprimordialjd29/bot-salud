@@ -389,12 +389,12 @@ async function reportePendientesTodas() {
 const ExcelJS = require('exceljs');
 
 const COLOR = {
-  EVALUADO:  { argb: 'FFD9EAD3' }, // verde claro
-  PARCIAL:   { argb: 'FFFFF2CC' }, // amarillo claro
-  PENDIENTE: { argb: 'FFFCE5CD' }, // naranja claro
-  HEADER:    { argb: 'FF1F4E79' }, // azul oscuro
+  EVALUADO:  { argb: 'FF6AA84F' }, // verde medio
+  PARCIAL:   { argb: 'FFFFD966' }, // amarillo dorado
+  PENDIENTE: { argb: 'FFE06666' }, // rojo coral
+  HEADER:    { argb: 'FF434343' }, // gris oscuro
   HEADER_TXT:{ argb: 'FFFFFFFF' }, // blanco
-  TOTAL_BG:  { argb: 'FFD0E4F5' }, // azul claro
+  TOTAL_BG:  { argb: 'FF76A5AF' }, // acero azul-gris
 };
 
 function aplicarEstilo(cell, estado) {
