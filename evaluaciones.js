@@ -279,10 +279,9 @@ async function generarReporte(vigencia) {
 
   if (pendientes.length > 0) {
     msg += `❌ *PENDIENTES DE EVALUAR (${pendientes.length})*\n`;
-    pendientes.slice(0, 10).forEach((d, i) => {
-      msg += `  ${i + 1}. ${d.prestador}\n     📍 ${d.municipio}\n`;
+    pendientes.forEach((d, i) => {
+      msg += `  ${i + 1}. ${d.prestador}\n     📍 ${d.municipio}${d.contrato ? ' — ' + d.contrato : ''}\n`;
     });
-    if (pendientes.length > 10) msg += `  _...y ${pendientes.length - 10} más_\n`;
     msg += '\n';
   }
 
