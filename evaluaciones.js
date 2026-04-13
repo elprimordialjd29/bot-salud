@@ -211,11 +211,37 @@ async function generarReporte(vigencia) {
   msg += `⚠️ Parcialmente evaluados: *${parciales.length}* (${pParc}%)\n`;
   msg += `❌ Pendientes: *${pendientes.length}* (${pPend}%)\n\n`;
 
+  // ── Totales por trimestre y régimen ──
+  const periodos = {};
+  for (const d of datos) {
+    if (!d.trimestres) continue;
+    for (const [periodo, val] of Object.entries(d.trimestres)) {
+      if (!periodos[periodo]) periodos[periodo] = { sub: 0, con: 0 };
+      periodos[periodo].sub += val.sub;
+      periodos[periodo].con += val.con;
+    }
+  }
+  if (Object.keys(periodos).length > 0) {
+    msg += `📅 *DESCUENTOS POR TRIMESTRE Y RÉGIMEN:*\n`;
+    let num = 1;
+    for (const [periodo, val] of Object.entries(periodos)) {
+      const total = val.sub + val.con;
+      if (total === 0) continue;
+      msg += `\n*${num}. ${periodo}*\n`;
+      if (val.sub > 0) msg += `   • Subsidiado:    ${formatPesos(val.sub)}\n`;
+      if (val.con > 0) msg += `   • Contributivo:  ${formatPesos(val.con)}\n`;
+      msg += `   • Total:         ${formatPesos(total)}\n`;
+      num++;
+    }
+    msg += '\n';
+  }
+
   if (topDescuentos.length > 0) {
-    msg += `💰 *TOP DESCUENTOS POR PRESTADOR:*\n`;
+    msg += `🏆 *RANKING PRESTADORES POR DESCUENTO:*\n`;
     topDescuentos.forEach(([nombre, info], i) => {
       if (info.descuentos > 0) {
-        msg += `${i + 1}. ${nombre}: ${formatPesos(info.descuentos)}\n`;
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+        msg += `${medal} ${nombre}: ${formatPesos(info.descuentos)}\n`;
       }
     });
     msg += '\n';
