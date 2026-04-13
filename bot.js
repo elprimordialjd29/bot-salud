@@ -42,6 +42,17 @@ const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID;
 
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
 
+// Teclado persistente siempre visible
+const TECLADO = {
+  reply_markup: {
+    keyboard: [
+      [{ text: '📋 Menú' }],
+    ],
+    resize_keyboard: true,
+    persistent: true,
+  },
+};
+
 // ──────────────────────────────────────────────
 // INICIO
 // ──────────────────────────────────────────────
@@ -59,9 +70,12 @@ async function iniciar() {
   // Iniciar reportes automáticos
   reportes.iniciar(bot);
 
-  // Mensaje de bienvenida con menú directo
+  // Mensaje de bienvenida con teclado persistente
   try {
-    await bot.sendMessage(ADMIN_ID, agente.mensajeBienvenida(), { parse_mode: 'Markdown' });
+    await bot.sendMessage(ADMIN_ID, agente.mensajeBienvenida(), {
+      parse_mode: 'Markdown',
+      ...TECLADO,
+    });
   } catch(e) {
     console.log('ℹ️  No se pudo enviar mensaje de bienvenida (normal en primer inicio)');
   }
@@ -230,12 +244,15 @@ async function enviarMensaje(chatId, texto) {
     partes.push(texto.substring(0, corte));
     texto = texto.substring(corte).trimStart();
   }
-  for (const parte of partes) {
+  for (let i = 0; i < partes.length; i++) {
+    const opts = i === partes.length - 1
+      ? { parse_mode: 'Markdown', ...TECLADO }
+      : { parse_mode: 'Markdown' };
     try {
-      await bot.sendMessage(chatId, parte, { parse_mode: 'Markdown' });
+      await bot.sendMessage(chatId, partes[i], opts);
     } catch(e) {
       try {
-        await bot.sendMessage(chatId, parte);
+        await bot.sendMessage(chatId, partes[i], i === partes.length - 1 ? TECLADO : {});
       } catch(e2) {
         console.error('Error enviando mensaje:', e2.message);
       }

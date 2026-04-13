@@ -83,7 +83,7 @@ async function procesarMensaje(texto, esAdmin = true) {
   }
 
   // Menú
-  const menuCmds = ['menú', 'menu', 'ayuda', 'help', '/menu', '/ayuda', '/help'];
+  const menuCmds = ['menú', 'menu', 'ayuda', 'help', '/menu', '/ayuda', '/help', '📋 menú', '📋 menu'];
   if (menuCmds.includes(tl)) {
     return mensajeMenu();
   }
