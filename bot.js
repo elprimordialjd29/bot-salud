@@ -10,13 +10,19 @@
 
 require('dotenv').config({ override: true });
 
-// ── Health check HTTP (Railway necesita un puerto HTTP activo) ──
+// ── HTTP Server (health check + API para VANEGAS) ──────────────────────────
 const http = require('http');
 const PORT = parseInt(process.env.PORT) || 3000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok', bot: 'Bot Salud', uptime: process.uptime() }));
-}).listen(PORT, () => console.log(`Health check activo en puerto ${PORT}`));
+  res.end(JSON.stringify({
+    status: 'ok',
+    bot: 'Bot Salud',
+    uptime: Math.floor(process.uptime()),
+    fecha: new Date().toISOString().slice(0, 10),
+    timestamp: new Date().toISOString(),
+  }));
+}).listen(PORT, () => console.log(`HTTP activo en puerto ${PORT}`));
 
 const TelegramBot = require('node-telegram-bot-api');
 const agente = require('./agente');
