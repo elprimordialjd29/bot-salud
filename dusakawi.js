@@ -6,6 +6,9 @@
 
 require('dotenv').config({ override: true });
 const puppeteer = require('puppeteer');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
 const evaluaciones = require('./evaluaciones');
 
 const LOGIN_URL   = 'http://asdempleados.dusakawiepsi.com:8080/sie_dusakawi/';
@@ -20,6 +23,84 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ──────────────────────────────────────────────
 // TRIMESTRES
 // ──────────────────────────────────────────────
+
+// Meses por trimestre para cada vigencia
+const MESES_TRIMESTRE = {
+  2025: [
+    { trim: 'I Trim',      meses: [
+      { nombre: 'Enero',    num: 1,  anio: 2025 },
+      { nombre: 'Febrero',  num: 2,  anio: 2025 },
+      { nombre: 'Marzo',    num: 3,  anio: 2025 },
+    ]},
+    { trim: 'II Trim',     meses: [
+      { nombre: 'Abril',    num: 4,  anio: 2025 },
+      { nombre: 'Mayo',     num: 5,  anio: 2025 },
+      { nombre: 'Junio',    num: 6,  anio: 2025 },
+    ]},
+    { trim: 'III Trim',    meses: [
+      { nombre: 'Julio',    num: 7,  anio: 2025 },
+      { nombre: 'Agosto',   num: 8,  anio: 2025 },
+      { nombre: 'Septiembre', num: 9, anio: 2025 },
+    ]},
+    { trim: 'IV Trim',     meses: [
+      { nombre: 'Octubre',  num: 10, anio: 2025 },
+      { nombre: 'Noviembre',num: 11, anio: 2025 },
+      { nombre: 'Diciembre',num: 12, anio: 2025 },
+    ]},
+    { trim: 'V Bimestre',  meses: [
+      { nombre: 'Enero 26', num: 1,  anio: 2026 },
+      { nombre: 'Febrero 26', num: 2, anio: 2026 },
+    ]},
+  ],
+  2024: [
+    { trim: 'I Trim',      meses: [
+      { nombre: 'Enero',    num: 1,  anio: 2024 },
+      { nombre: 'Febrero',  num: 2,  anio: 2024 },
+      { nombre: 'Marzo',    num: 3,  anio: 2024 },
+    ]},
+    { trim: 'II Trim',     meses: [
+      { nombre: 'Abril',    num: 4,  anio: 2024 },
+      { nombre: 'Mayo',     num: 5,  anio: 2024 },
+      { nombre: 'Junio',    num: 6,  anio: 2024 },
+    ]},
+    { trim: 'III Trim',    meses: [
+      { nombre: 'Julio',    num: 7,  anio: 2024 },
+      { nombre: 'Agosto',   num: 8,  anio: 2024 },
+      { nombre: 'Septiembre', num: 9, anio: 2024 },
+    ]},
+    { trim: 'IV Trim',     meses: [
+      { nombre: 'Octubre',  num: 10, anio: 2024 },
+      { nombre: 'Noviembre',num: 11, anio: 2024 },
+      { nombre: 'Diciembre',num: 12, anio: 2024 },
+    ]},
+    { trim: 'V Bimestre',  meses: [
+      { nombre: 'Enero 25', num: 1,  anio: 2025 },
+      { nombre: 'Febrero 25', num: 2, anio: 2025 },
+    ]},
+  ],
+  2023: [
+    { trim: 'I Trim',      meses: [
+      { nombre: 'Enero',    num: 1,  anio: 2023 },
+      { nombre: 'Febrero',  num: 2,  anio: 2023 },
+      { nombre: 'Marzo',    num: 3,  anio: 2023 },
+    ]},
+    { trim: 'II Trim',     meses: [
+      { nombre: 'Abril',    num: 4,  anio: 2023 },
+      { nombre: 'Mayo',     num: 5,  anio: 2023 },
+      { nombre: 'Junio',    num: 6,  anio: 2023 },
+    ]},
+    { trim: 'III Trim',    meses: [
+      { nombre: 'Julio',    num: 7,  anio: 2023 },
+      { nombre: 'Agosto',   num: 8,  anio: 2023 },
+      { nombre: 'Septiembre', num: 9, anio: 2023 },
+    ]},
+    { trim: 'IV Trim',     meses: [
+      { nombre: 'Octubre',  num: 10, anio: 2023 },
+      { nombre: 'Noviembre',num: 11, anio: 2023 },
+      { nombre: 'Diciembre',num: 12, anio: 2023 },
+    ]},
+  ],
+};
 
 const TRIMESTRES = {
   2025: [
@@ -44,6 +125,57 @@ const TRIMESTRES = {
   ],
 };
 
+// Parsea fecha y retorna { mes (1-12), anio }
+function parsearFecha(fechaStr) {
+  if (!fechaStr) return null;
+  try {
+    const s = fechaStr.trim();
+    let d;
+    if (/^\d{4}[\/\-]\d{2}[\/\-]\d{2}/.test(s)) {
+      d = new Date(s.replace(/\//g, '-').substring(0, 10));
+    } else if (/^\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(s)) {
+      const p = s.substring(0, 10).replace(/\//g, '-').split('-');
+      d = new Date(`${p[2]}-${p[1]}-${p[0]}`);
+    } else {
+      d = new Date(s);
+    }
+    if (isNaN(d)) return null;
+    return { mes: d.getMonth() + 1, anio: d.getFullYear() };
+  } catch(e) { return null; }
+}
+
+// Analiza qué meses tienen radicaciones y devuelve estructura por trimestre
+function analizarMesesRadicados(filas, vigencia) {
+  const mesesConRegistros = new Set(); // "2025-3" = año-mes
+  for (const f of filas) {
+    const fecha = f['Fecha Recepción'] || f['Fecha'] || f._raw?.[4] || '';
+    const p = parsearFecha(fecha);
+    if (p) mesesConRegistros.add(`${p.anio}-${p.mes}`);
+  }
+
+  const estructura = MESES_TRIMESTRE[vigencia] || MESES_TRIMESTRE[2025];
+  return estructura.map(t => ({
+    trim: t.trim,
+    meses: t.meses.map(m => ({
+      nombre: m.nombre,
+      radicado: mesesConRegistros.has(`${m.anio}-${m.num}`),
+    })),
+  }));
+}
+
+// Formatea el resumen mes a mes
+function formatearResumenMeses(analisis) {
+  let txt = '';
+  for (const t of analisis) {
+    const iconos = t.meses.map(m => m.radicado ? '✅' : '❌').join(' ');
+    txt += `*${t.trim}* ${iconos}\n`;
+    for (const m of t.meses) {
+      txt += `  ${m.radicado ? '✅' : '❌'} ${m.nombre}\n`;
+    }
+  }
+  return txt;
+}
+
 function fechaATrimestre(fechaStr, vigencia) {
   if (!fechaStr) return null;
   try {
@@ -66,6 +198,7 @@ function fechaATrimestre(fechaStr, vigencia) {
     return null;
   } catch(e) { return null; }
 }
+
 
 // ──────────────────────────────────────────────
 // BROWSER
@@ -115,17 +248,28 @@ async function login(page) {
 // BUSCAR EN CONSULTA RECEPCIÓN
 // ──────────────────────────────────────────────
 
-async function buscarEnConsultaRecepcion(page, { contrato, regimen, estado = '5' } = {}) {
+async function buscarEnConsultaRecepcion(page, { contrato, regimen, estado = '5', fechaDesde = null } = {}) {
   await page.goto(CONSULTA_URL, { waitUntil: 'networkidle2', timeout: 30000 });
   await sleep(2000);
 
+  // Filtro fecha desde — formato YYYY/MM/DD (PrimeFaces Calendar acepta este formato)
+  if (fechaDesde) {
+    try {
+      await page.$eval('#j_idt102_input', el => { el.value = ''; });
+      await page.focus('#j_idt102_input');
+      await page.keyboard.type(fechaDesde, { delay: 40 });
+      await page.keyboard.press('Tab');
+      await sleep(600);
+    } catch(e) {}
+  }
+
   // Número de contrato
   if (contrato) {
-    await page.$eval('#txtNumeroContratoC', (el, v) => { el.value = ''; }, '');
+    await page.$eval('#txtNumeroContratoC', el => { el.value = ''; });
     await page.type('#txtNumeroContratoC', contrato, { delay: 40 });
   }
 
-  // Estado = Radicado (valor 5) — o el que se pida
+  // Estado
   if (estado) {
     await page.select('#j_idt123_input', estado);
     await sleep(300);
@@ -140,50 +284,89 @@ async function buscarEnConsultaRecepcion(page, { contrato, regimen, estado = '5'
     }
   }
 
-  // Cantidad = 50 (máximo por página)
-  try {
-    const cantInput = await page.$('#j_idt129');
-    if (cantInput) { await cantInput.click({ clickCount: 3 }); await cantInput.type('50', { delay: 30 }); }
-  } catch(e) {}
-
-  // Botón buscar — buscar button dentro del formulario
+  // Buscar
   const clicked = await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll('button, input[type="submit"]'));
-    const btn = btns.find(b => /buscar|consultar|filtrar|search/i.test(b.innerText || b.value || ''));
+    const btns = Array.from(document.querySelectorAll('button'));
+    const btn = btns.find(b => /buscar/i.test(b.innerText || ''));
     if (btn) { btn.click(); return true; }
-    // Buscar el primer botón con ícono de búsqueda
-    const anyBtn = btns.find(b => b.type === 'submit' || b.className.includes('search') || b.className.includes('buscar'));
-    if (anyBtn) { anyBtn.click(); return true; }
     return false;
   });
   if (!clicked) {
-    // Fallback: submit con Enter en campo contrato
     await page.focus('#txtNumeroContratoC');
     await page.keyboard.press('Enter');
   }
-
-  await sleep(3000);
+  await sleep(4000);
 }
 
 // ──────────────────────────────────────────────
 // EXTRAER FILAS DE LA TABLA
 // ──────────────────────────────────────────────
 
-async function extraerFilas(page) {
+function extraerFilasDePagina(page) {
   return page.evaluate(() => {
-    const tabla = document.querySelector('table');
+    // Hay 2 tablas (header y body a veces) — tomar la que tiene tbody con datos
+    const tablas = Array.from(document.querySelectorAll('table'));
+    const tabla = tablas.find(t => t.querySelectorAll('tbody tr').length > 0) || tablas[0];
     if (!tabla) return [];
-    const headerEls = tabla.querySelectorAll('thead th, tr:first-child th');
-    const headers = Array.from(headerEls).map(th => th.innerText.trim());
-    const rows = tabla.querySelectorAll('tbody tr');
-    return Array.from(rows).map(tr => {
-      const celdas = Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim());
-      if (!celdas.some(c => c)) return null;
-      const obj = { _raw: celdas };
-      headers.forEach((h, i) => { if (h) obj[h] = celdas[i] || ''; });
-      return obj;
+    // Columnas (9 botones al inicio): 9=RecRips,10=IPS,11=Fecha,12=Usuario,13=Contrato,
+    // 14=TipoContrato,15=CantidadAF,16=ValorAF,17=Tipo,18=Estado,19=NumRad,20=Regimen
+    const COLS = { recRips:9, ips:10, fecha:11, contrato:13, valor:16, tipo:17, estado:18, numRad:19, regimen:20 };
+    return Array.from(tabla.querySelectorAll('tbody tr')).map(tr => {
+      const c = Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim());
+      if (!c.some(x => x)) return null;
+      return {
+        ips:     (c[COLS.ips] || '').split('\n')[0],
+        fecha:   c[COLS.fecha]   || '',
+        valor:   c[COLS.valor]   || '',
+        estado:  c[COLS.estado]  || '',
+        numRad:  c[COLS.numRad]  || '',
+        regimen: c[COLS.regimen] || '',
+      };
     }).filter(Boolean);
   });
+}
+
+async function extraerFilas(page) {
+  // Extraer primera página
+  const todas = await extraerFilasDePagina(page);
+
+  // Revisar si hay más páginas (paginador con páginas activas > 1)
+  const totalPaginas = await page.evaluate(() => {
+    // El segundo paginador (el de resultados) tiene los números de página
+    const paginadores = document.querySelectorAll('.ui-paginator-pages');
+    let max = 1;
+    paginadores.forEach(p => {
+      const paginas = p.querySelectorAll('.ui-paginator-page');
+      if (paginas.length > max) max = paginas.length;
+    });
+    return max;
+  });
+
+  // Iterar páginas 2..N (máximo 20 páginas para no tardar demasiado)
+  const maxPags = Math.min(totalPaginas, 20);
+  for (let pag = 2; pag <= maxPags; pag++) {
+    // Click en número de página
+    const clickOk = await page.evaluate((numPag) => {
+      const paginadores = document.querySelectorAll('.ui-paginator-pages');
+      // Buscar en el paginador con más páginas
+      let target = null;
+      paginadores.forEach(p => {
+        const paginas = p.querySelectorAll('.ui-paginator-page');
+        paginas.forEach(pg => {
+          if (pg.innerText.trim() === String(numPag)) target = pg;
+        });
+      });
+      if (target) { target.click(); return true; }
+      return false;
+    }, pag);
+
+    if (!clickOk) break;
+    await sleep(3000);
+    const filasPag = await extraerFilasDePagina(page);
+    todas.push(...filasPag);
+  }
+
+  return todas;
 }
 
 // ──────────────────────────────────────────────
@@ -198,6 +381,7 @@ async function consultarEstadoRadicacion({ prestador = '', contrato = '', vigenc
 
   const browser = await abrirBrowser();
   const page = await browser.newPage();
+
   try {
     await login(page);
     const regStr = regimen === 'sub' ? 'RS' : regimen === 'con' ? 'RC' : null;
@@ -205,42 +389,44 @@ async function consultarEstadoRadicacion({ prestador = '', contrato = '', vigenc
     const filas = await extraerFilas(page);
 
     if (filas.length === 0) {
-      return { texto: `⚠️ No se encontraron radicaciones para *${termino}* en Dusakawi.\n_(Estado: Radicado${regStr ? ` | Régimen: ${regStr}` : ''})_` };
+      return { texto: `⚠️ No se encontraron registros para *${termino}* en Dusakawi.` };
     }
 
-    // Analizar trimestres por fecha de recepción
-    const trimestreSet = new Set();
+    // Extraer meses de la columna Fecha (formato "01-01-2026-31-01-2026" o "2026/01/01")
+    // La fecha de recepción indica el período del RIPS radicado
+    const mesesRadicados = new Set();
     for (const f of filas) {
-      const fecha = f['Fecha Recepción'] || f['Fecha'] || f._raw?.[4] || '';
-      const t = fechaATrimestre(fecha, vigencia);
-      if (t) trimestreSet.add(t);
+      const p = parsearFecha(f.fecha);
+      if (p) mesesRadicados.add(`${p.anio}-${p.mes}`);
     }
-    const radicados = [...trimestreSet].sort();
-    const todos = (TRIMESTRES[vigencia] || TRIMESTRES[2025]).map(t => t.nombre);
-    const pendientes = todos.filter(t => !radicados.includes(t));
 
-    let txt = `🌐 *RADICACIÓN — ${termino}*\n`;
-    txt += `Vigencia ${vigencia} | Total registros: *${filas.length}*\n`;
-    if (regStr) txt += `Régimen: *${regStr}*\n`;
+    // Analizar meses de vigencia
+    const estructura = MESES_TRIMESTRE[vigencia] || MESES_TRIMESTRE[2025];
+    const analisis = estructura.map(t => ({
+      trim: t.trim,
+      meses: t.meses.map(m => ({
+        nombre: m.nombre,
+        radicado: mesesRadicados.has(`${m.anio}-${m.num}`),
+      })),
+    }));
+
+    const totalRadicados = analisis.reduce((a, t) => a + t.meses.filter(m => m.radicado).length, 0);
+    const totalMeses = analisis.reduce((a, t) => a + t.meses.length, 0);
+
+    let txt = `🌐 *RADICACIÓN — ${termino.toUpperCase()}*\n`;
+    txt += `Vigencia *${vigencia}*`;
+    if (regStr) txt += ` | Régimen: *${regStr}*`;
+    txt += ` | Registros: *${filas.length}*\n`;
     txt += `━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    txt += `✅ *Trimestres radicados:*\n${radicados.length > 0 ? radicados.map(t => `  • ${t}`).join('\n') : '  Ninguno'}\n\n`;
-    txt += `❌ *Trimestres pendientes:*\n${pendientes.length > 0 ? pendientes.map(t => `  • ${t}`).join('\n') : '  ¡Al día!'}\n\n`;
+    txt += `📅 *ESTADO POR MES:*\n`;
+    txt += formatearResumenMeses(analisis);
 
-    txt += `📋 *Últimas radicaciones:*\n`;
-    filas.slice(0, 15).forEach((f, i) => {
-      const fecha  = f['Fecha Recepción'] || f._raw?.[4] || '';
-      const ips    = (f['IPS'] || f._raw?.[3] || '').split('\n')[0];
-      const nRad   = f['Número Radicación'] || f._raw?.[10] || '';
-      const valor  = f['Valor AF'] || f._raw?.[7] || '';
-      const estado = f['Estado'] || f._raw?.[9] || '';
-      const trim   = fechaATrimestre(fecha, vigencia);
-      txt += `*${i+1}.* 📅 ${fecha}${trim ? ` _(${trim})_` : ''}\n`;
-      if (ips)    txt += `   🏥 ${ips}\n`;
-      if (nRad)   txt += `   🔖 Rad: ${nRad}\n`;
-      if (valor)  txt += `   💰 ${valor}\n`;
-      if (estado) txt += `   📌 ${estado}\n`;
-    });
-    if (filas.length > 15) txt += `\n_...y ${filas.length - 15} más._\n`;
+    const mesesPend = analisis.flatMap(t => t.meses.filter(m => !m.radicado).map(m => m.nombre));
+    txt += `\n━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    txt += `✅ Meses radicados: *${totalRadicados}/${totalMeses}*\n`;
+    txt += mesesPend.length > 0
+      ? `❌ Pendientes: ${mesesPend.join(', ')}\n`
+      : `🎉 ¡Al día con todos los meses!\n`;
 
     return { texto: txt };
   } catch(e) {
